@@ -21,22 +21,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
         if (!email || !password) return null;
 
-        const user = await prisma.user.findUnique({
-          where: { email },
-          include: { driver: { select: { id: true } } },
-        });
+        try {
+          const user = await prisma.user.findUnique({
+            where: { email },
+            include: { driver: { select: { id: true } } },
+          });
 
-        if (!user) return null;
+          if (!user) {
+            console.error("[auth] user not found");
+            return null;
+          }
 
-        const isValid = await bcryptjs.compare(password, user.passwordHash);
-        if (!isValid) return null;
+          const isValid = await bcryptjs.compare(password, user.passwordHash);
+          if (!isValid) {
+            console.error("[auth] password invalid");
+            return null;
+          }
 
-        return {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          driverId: user.driver?.id ?? null,
-        };
+          return {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            driverId: user.driver?.id ?? null,
+          };
+        } catch (err) {
+          console.error("[auth] authorize error:", err instanceof Error ? err.message : err);
+          return null;
+        }
       },
     }),
   ],
