@@ -39,27 +39,23 @@ export function ImageHistoryList({ refreshKey }: ImageHistoryListProps) {
   async function handleRunOcr(id: string) {
     setRunningIds((prev) => new Set(prev).add(id));
 
+    // OCR は同期実行のため完了まで待つ（Tesseract.js は時間がかかる）
     const res = await fetch(`/api/ocr/${id}`, { method: "POST" });
+
+    setRunningIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       alert(body.error ?? "OCR実行に失敗しました");
-      setRunningIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
       return;
     }
 
-    // 3秒後にリストを更新してステータスを反映
-    setTimeout(() => {
-      fetchImages();
-      setRunningIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }, 3000);
+    // 完了後にリストを更新
+    await fetchImages();
   }
 
   if (loading) {

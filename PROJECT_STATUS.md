@@ -1,7 +1,7 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-06-29（🎉 本番デプロイ完了 https://rakuten-delivery-app.vercel.app）
+> 最終更新: 2026-06-29（✅ ログイン修正完了・初回テスト中）
 
 ---
 
@@ -46,7 +46,168 @@ CARIOとは別に新規開発するWebアプリ。
 
 **ステータス凡例:** ⬜ 未着手 / ⚠️ 確認待ち / 🔄 作業中 / ✅ 完了
 
+✅ **ログイン修正完了・初回テスト中**
+
 > **🎉 STEP 1〜9 すべて完了。MVP 完成。**
+
+---
+
+## 🔴 本番ログイン不具合（調査中）
+
+### 環境
+
+| 項目 | 内容 |
+|---|---|
+| 本番 URL | https://rakuten-delivery-app.vercel.app |
+| デプロイ先 | Vercel（Hobby プラン） |
+| DB | Neon PostgreSQL（pooler 接続） |
+| フレームワーク | Next.js 16 / NextAuth.js v5 beta.31 |
+| 認証方式 | Credentials Provider + JWT strategy |
+
+### 症状
+
+- `/login` でメール・パスワードを入力してログインボタンを押すと失敗する
+- ログイン画面に戻ってしまう（エラーメッセージ「メールアドレスまたはパスワードが正しくありません」が表示される）
+- ローカル開発環境（Docker PostgreSQL）では未検証
+
+### 確認済み事項（問題なし）
+
+| 確認項目 | 結果 |
+|---|---|
+| DB 接続 | ✅ 正常（Neon に接続できている） |
+| ユーザーの存在 | ✅ `admin@delivery-app.local` が DB に存在 |
+| パスワード照合（bcrypt） | ✅ `passwordValid: true` を確認済み |
+| Vercel 環境変数 | ✅ 全6件設定済み |
+| next build | ✅ ローカルでエラーなし |
+
+### Vercel ログの状況
+
+```
+POST /api/auth/callback/credentials  200  (node:4) Warning…  ← level: error
+GET /api/auth/csrf                    200
+GET /api/auth/providers               200
+```
+
+- `POST /api/auth/callback/credentials` が HTTP 200 を返している
+- しかしセッションが作成されず、ログイン後も `/login` にリダイレクトされる
+- Vercel ログに `(node:4) Warning…` が表示される（SSL モード警告と思われる）
+- `console.error("[auth] ...")` のメッセージがログに出ない（エラーが catch されていない可能性）
+
+### 試したこと（すべて失敗）
+
+| 対応 | 結果 |
+|---|---|
+| `prisma generate` をビルド前に実行 | 変わらず |
+| `DATABASE_URL` から `channel_binding=require` を削除 | 変わらず |
+| `AUTH_SECRET` 環境変数を追加 | 変わらず |
+| `trustHost: true` を NextAuth 設定に追加 | 変わらず |
+| ログイン後の遷移を `window.location.href = "/"` に変更 | 変わらず |
+| パスワードを `lwWhppwIIizz3HysYSmR` に変更して再 seed | 変わらず |
+
+### 現在のコード（関連部分）
+
+#### `src/lib/auth/auth.ts`
+
+```typescript
+export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
+  trustHost: true,
+  session: { strategy: "jwt" },
+  pages: { signIn: "/login" },
+  providers: [
+    Credentials({
+      credentials: {
+        email: { type: "email" },
+        password: { type: "password" },
+      },
+      async authorize(credentials) {
+        // DB からユーザーを取得して bcrypt で照合
+        // passwordValid: true を確認済み → ユーザーオブジェクトを return している
+        return { id, email, role, driverId };
+      },
+    }),
+  ],
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) { token.id = user.id; token.role = user.role; token.driverId = user.driverId; }
+      return token;
+    },
+    async session({ session, token }) {
+      session.user.id = token.id; session.user.role = token.role; session.user.driverId = token.driverId;
+      return session;
+    },
+  },
+});
+```
+
+#### `src/middleware.ts`
+
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import { getToken } from "next-auth/jwt";
+
+export async function middleware(req: NextRequest) {
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  // ... ロール別リダイレクト
+}
+export const config = { matcher: ["/admin/:path*", "/driver/:path*", "/login"] };
+```
+
+#### `src/components/common/LoginForm.tsx`（抜粋）
+
+```typescript
+const result = await signIn("credentials", {
+  email,
+  password,
+  redirect: false,
+});
+
+if (result?.error) {
+  setError("メールアドレスまたはパスワードが正しくありません");
+  return;
+}
+
+window.location.href = "/";
+```
+
+#### `src/lib/prisma.ts`
+
+```typescript
+import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaClient } from "@/generated/prisma/client";
+
+function createPrismaClient() {
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+  return new PrismaClient({ adapter });
+}
+export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+```
+
+### 設定済みの Vercel 環境変数
+
+| 変数 | 状態 |
+|---|---|
+| `DATABASE_URL` | ✅ Neon pooler URL（sslmode=require） |
+| `NEXTAUTH_SECRET` | ✅ 設定済み |
+| `NEXTAUTH_URL` | ✅ `https://rakuten-delivery-app.vercel.app` |
+| `AUTH_SECRET` | ✅ NEXTAUTH_SECRET と同じ値 |
+| `GOOGLE_CLOUD_VISION_API_KEY` | ✅ 設定済み |
+| `GOOGLE_MAPS_API_KEY` | ✅ 設定済み |
+| `BLOB_READ_WRITE_TOKEN` | ✅ 設定済み |
+
+### 考えられる原因
+
+1. NextAuth v5 beta.31 + Credentials Provider + JWT strategy の組み合わせの既知バグ
+2. Vercel 環境での NEXTAUTH_SECRET の読み取り方の問題
+3. `getToken()` と NextAuth の `auth()` でシークレット不一致
+4. Neon pooler 接続での Prisma セッション問題
+5. Next.js 16 + NextAuth v5 の互換性問題
+
+### GitHub リポジトリ
+
+https://github.com/momose-clore/rakuten-delivery-app（Private）
+
+---
 
 ---
 
@@ -1116,3 +1277,4 @@ npm run db:seed:prod
 | 2026-06-29 | Vercel 設定 | 環境変数6個登録・Vercel Blob 作成・Google API キー設定 |
 | 2026-06-29 | middleware 修正 | Edge Runtime 対応（getToken 方式）・デプロイエラー解消 |
 | 2026-06-29 | 🎉 本番デプロイ | https://rakuten-delivery-app.vercel.app にデプロイ完了 |
+| 2026-06-29 | ⚠️→✅ ログイン修正 | 原因: NextAuth v5 は JWE 暗号化のため getToken() 不可 → authConfig 分離パターンに変更 |

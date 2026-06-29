@@ -3,6 +3,9 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
 import { runOcr } from "@/lib/ocr";
 
+// Tesseract.js は時間がかかるため最大60秒まで許容
+export const maxDuration = 60;
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -17,13 +20,11 @@ export async function POST(
 
   const { id } = await params;
 
-  // 対象レコードの存在確認
   const image = await prisma.dispatchImage.findUnique({ where: { id } });
   if (!image) {
     return NextResponse.json({ error: "画像が見つかりません" }, { status: 404 });
   }
 
-  // 処理中・確定済みはスキップ
   if (image.ocrStatus === "PROCESSING") {
     return NextResponse.json({ error: "OCR処理中です" }, { status: 409 });
   }
@@ -31,10 +32,19 @@ export async function POST(
     return NextResponse.json({ error: "OCR確定済みです" }, { status: 409 });
   }
 
-  // 非同期で実行（202 を即時返す）
-  runOcr(id, session.user.id).catch((err) => {
+  try {
+    // 同期実行（Vercel serverless では非同期は関数終了時に切れるため）
+    const result = await runOcr(id, session.user.id);
+    return NextResponse.json({
+      success: true,
+      itemCount: result.itemCount,
+      reviewCount: result.reviewCount,
+    });
+  } catch (err) {
     console.error("[OCR Error] id=%s message=%s", id, err instanceof Error ? err.message : err);
-  });
-
-  return NextResponse.json({ success: true, message: "OCR処理を開始しました" }, { status: 202 });
+    return NextResponse.json(
+      { error: "OCR処理に失敗しました。再度試してください。" },
+      { status: 500 }
+    );
+  }
 }
