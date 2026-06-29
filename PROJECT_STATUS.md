@@ -1,7 +1,7 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-06-29（DEPLOY.md 作成・作業分担整理・自動化コマンド一覧確定）
+> 最終更新: 2026-06-29（🎉 本番デプロイ完了 https://rakuten-delivery-app.vercel.app）
 
 ---
 
@@ -1108,3 +1108,11 @@ npm run db:seed:prod
 | 2026-06-29 | デプロイ準備 | 最終確認（tsc/lint/build 全 OK）・デプロイ手順確定・CARIO仕様待ち項目整理・動作確認シナリオ作成 |
 | 2026-06-29 | デプロイ実行 | 実行チェックリスト作成（①Neon→②Vercel→③Blob→④Google API→⑤ENV→⑥migrate→⑦seed→⑧再デプロイ→⑨確認）|
 | 2026-06-29 | 自動化整理 | DEPLOY.md 作成・作業分担（人間 vs Claude Code）・Vercel CLI コマンド一覧・typecheck/lint/build 全 OK |
+| 2026-06-29 | Git 初期化 | git init・.gitignore 更新（AGENTS.md/CLAUDE.md除外）・117ファイル初回コミット完了 |
+| 2026-06-29 | GitHub push | https://github.com/momose-clore/rakuten-delivery-app（Private）に push 完了 |
+| 2026-06-29 | middleware 修正 | NextAuth v5 推奨方式に変更（authorized callback + export { auth as middleware }） |
+| 2026-06-29 | Neon migrate | 初回マイグレーション作成・適用完了（20260629132459_init） |
+| 2026-06-29 | 本番 seed | admin@delivery-app.local を Neon DB に作成完了 |
+| 2026-06-29 | Vercel 設定 | 環境変数6個登録・Vercel Blob 作成・Google API キー設定 |
+| 2026-06-29 | middleware 修正 | Edge Runtime 対応（getToken 方式）・デプロイエラー解消 |
+| 2026-06-29 | 🎉 本番デプロイ | https://rakuten-delivery-app.vercel.app にデプロイ完了 |
