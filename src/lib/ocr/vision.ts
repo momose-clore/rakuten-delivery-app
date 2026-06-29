@@ -1,7 +1,6 @@
-import { extractTextWithTesseract } from "./tesseract";
+import { extractTextWithOcrSpace } from "./ocr-space";
 
-const VISION_API_ENDPOINT =
-  "https://vision.googleapis.com/v1/images:annotate";
+const VISION_API_ENDPOINT = "https://vision.googleapis.com/v1/images:annotate";
 
 interface VisionResponse {
   responses: Array<{
@@ -11,51 +10,40 @@ interface VisionResponse {
 }
 
 /**
- * 画像からテキストを抽出する。
- * GOOGLE_CLOUD_VISION_API_KEY が設定されていれば Cloud Vision API を使用、
- * 未設定の場合は Tesseract.js（無料・APIキー不要）にフォールバック。
+ * OCR エンジンの優先順位:
+ * 1. Google Cloud Vision API（GOOGLE_CLOUD_VISION_API_KEY が設定済みで動作する場合）
+ * 2. OCR.space（無料・高速・Vercel 10秒制限内）
  */
 export async function extractTextFromImage(imageBuffer: Buffer): Promise<string> {
-  const apiKey = process.env.GOOGLE_CLOUD_VISION_API_KEY;
+  const visionKey = process.env.GOOGLE_CLOUD_VISION_API_KEY;
 
-  // APIキーがない or 空 → Tesseract.js を使用
-  if (!apiKey) {
-    console.log("[OCR] GOOGLE_CLOUD_VISION_API_KEY 未設定のため Tesseract.js を使用");
-    return extractTextWithTesseract(imageBuffer);
-  }
-
-  try {
-    const body = {
-      requests: [
-        {
+  // Cloud Vision API を試みる
+  if (visionKey) {
+    try {
+      const body = {
+        requests: [{
           image: { content: imageBuffer.toString("base64") },
           features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
           imageContext: { languageHints: ["ja"] },
-        },
-      ],
-    };
-
-    const res = await fetch(`${VISION_API_ENDPOINT}?key=${apiKey}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      throw new Error(`Vision API HTTP ${res.status}`);
+        }],
+      };
+      const res = await fetch(`${VISION_API_ENDPOINT}?key=${visionKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as VisionResponse;
+        const r = data.responses[0];
+        if (!r?.error && r?.fullTextAnnotation?.text) {
+          return r.fullTextAnnotation.text;
+        }
+      }
+    } catch {
+      // フォールバック
     }
-
-    const data = (await res.json()) as VisionResponse;
-    const response = data.responses[0];
-
-    if (response?.error) {
-      throw new Error(`Vision API: ${response.error.message}`);
-    }
-
-    return response?.fullTextAnnotation?.text ?? "";
-  } catch (err) {
-    // Cloud Vision 失敗 → Tesseract.js にフォールバック
-    console.log("[OCR] Cloud Vision 失敗、Tesseract.js にフォールバック:", err instanceof Error ? err.message : err);
-    return extractTextWithTesseract(imageBuffer);
   }
+
+  // OCR.space（無料・高速・デモキー helloworld で即時利用可能）
+  return extractTextWithOcrSpace(imageBuffer);
 }
