@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// 認証・ユーザー
+// ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  DRIVER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role     @default(DRIVER)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  driver    Driver?
+  auditLogs AuditLog[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// ドライバーマスタ
+// ─────────────────────────────────────────────
+
+model Driver {
+  id            String   @id @default(cuid())
+  userId        String?  @unique @map("user_id")
+  carioDriverId String?  @unique @map("cario_driver_id")
+  name          String
+  phone         String?
+  companyName   String?  @map("company_name")
+  area          String?
+  vehicleId     String?  @map("vehicle_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user        User?        @relation(fields: [userId], references: [id])
+  shifts      Shift[]
+  assignments Assignment[]
+  routeGroups RouteGroup[]
+
+  @@map("drivers")
+}
+
+// ─────────────────────────────────────────────
+// CARIOシフト
+// ─────────────────────────────────────────────
+
+enum ShiftStatus {
+  CONFIRMED
+  TENTATIVE
+  ABSENT
+}
+
+model Shift {
+  id        String      @id @default(cuid())
+  driverId  String      @map("driver_id")
+  workDate  DateTime    @map("work_date") @db.Date
+  startTime DateTime?   @map("start_time") @db.Time()
+  endTime   DateTime?   @map("end_time") @db.Time()
+  status    ShiftStatus @default(CONFIRMED)
+  source    String?
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, workDate], name: "driverId_workDate")
+  @@map("shifts")
+}
+
+// ─────────────────────────────────────────────
+// 配車表画像
+// ─────────────────────────────────────────────
+
+enum OcrStatus {
+  PENDING
+  PROCESSING
+  REVIEW_REQUIRED
+  CONFIRMED
+  ERROR
+}
+
+model DispatchImage {
+  id           String    @id @default(cuid())
+  deliveryDate DateTime  @map("delivery_date") @db.Date
+  area         String?
+  waveNo       String?   @map("wave_no")
+  imageUrl     String    @map("image_url")
+  ocrStatus    OcrStatus @default(PENDING) @map("ocr_status")
+  importedAt   DateTime  @default(now()) @map("imported_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  deliveryItems DeliveryItem[]
+
+  @@map("dispatch_images")
+}
+
+// ─────────────────────────────────────────────
+// 配送明細（OCR読み取り結果）
+// ─────────────────────────────────────────────
+
+enum DeliveryStatus {
+  PENDING_OCR
+  REVIEW_REQUIRED
+  ADDRESS_ERROR
+  UNASSIGNED
+  ASSIGNED
+  IN_DELIVERY
+  COMPLETED
+  ABSENT
+  RETURNED
+  SKIPPED
+}
+
+model DeliveryItem {
+  id                String         @id @default(cuid())
+  dispatchImageId   String         @map("dispatch_image_id")
+  dispatchKey       String?        @map("dispatch_key")
+  waveNo            String?        @map("wave_no")
+  vehicleNo         String?        @map("vehicle_no")
+  deliverySeq       Int?           @map("delivery_seq")
+  invoiceNo         String?        @map("invoice_no")
+  customerName      String?        @map("customer_name")
+  customerPhone     String?        @map("customer_phone")
+  address           String?
+  specialFlag       String?        @map("special_flag")
+  normalOriconCount Int?           @default(0) @map("normal_oricon_count")
+  coolerBoxCount    Int?           @default(0) @map("cooler_box_count")
+  caseCount         Int?           @default(0) @map("case_count")
+  totalCount        Int?           @default(0) @map("total_count")
+  memo              String?
+  lat               Float?
+  lng               Float?
+  ocrNotes          String?        @map("ocr_notes")
+  ocrStatus         OcrStatus      @default(PENDING) @map("ocr_status")
+  deliveryStatus    DeliveryStatus @default(PENDING_OCR) @map("delivery_status")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  dispatchImage DispatchImage @relation(fields: [dispatchImageId], references: [id])
+  assignments   Assignment[]
+
+  @@map("delivery_items")
+}
+
+// ─────────────────────────────────────────────
+// ドライバー割当
+// ─────────────────────────────────────────────
+
+enum AssignmentStatus {
+  ASSIGNED
+  IN_DELIVERY
+  COMPLETED
+  ABSENT
+  RETURNED
+  SKIPPED
+}
+
+model Assignment {
+  id             String           @id @default(cuid())
+  deliveryItemId String           @unique @map("delivery_item_id")
+  driverId       String           @map("driver_id")
+  routeOrder     Int?             @map("route_order")
+  waveNo         String?          @map("wave_no")
+  loadingGroup   String?          @map("loading_group")
+  isSplitLoading Boolean          @default(false) @map("is_split_loading")
+  status         AssignmentStatus @default(ASSIGNED)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  deliveryItem DeliveryItem @relation(fields: [deliveryItemId], references: [id])
+  driver       Driver       @relation(fields: [driverId], references: [id])
+
+  @@map("assignments")
+}
+
+// ─────────────────────────────────────────────
+// ルートグループ
+// ─────────────────────────────────────────────
+
+enum LoadingMode {
+  SIMULTANEOUS
+  SPLIT
+}
+
+model RouteGroup {
+  id                String      @id @default(cuid())
+  driverId          String      @map("driver_id")
+  deliveryDate      DateTime    @map("delivery_date") @db.Date
+  waveGroup         String      @map("wave_group")
+  loadingMode       LoadingMode @default(SIMULTANEOUS) @map("loading_mode")
+  startLocation     String?     @map("start_location")
+  endLocation       String?     @map("end_location")
+  returnToWarehouse Boolean     @default(true) @map("return_to_warehouse")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, deliveryDate, waveGroup], name: "driverId_deliveryDate_waveGroup")
+  @@map("route_groups")
+}
+
+// ─────────────────────────────────────────────
+// 操作ログ・OCR修正履歴
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  action     String
+  targetType String   @map("target_type")
+  targetId   String   @map("target_id")
+  beforeData Json?    @map("before_data")
+  afterData  Json?    @map("after_data")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}

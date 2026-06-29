@@ -1,0 +1,1110 @@
+# 楽天スーパー配送アプリ — 開発ステータス
+
+> GPT共有用ドキュメント。作業完了ごとに更新する。
+> 最終更新: 2026-06-29（DEPLOY.md 作成・作業分担整理・自動化コマンド一覧確定）
+
+---
+
+## プロジェクト概要
+
+CARIOとは別に新規開発するWebアプリ。
+専用配送サイト上の「L1M貨物一覧表／配車予定表」画像をOCRで読み取り、CARIOから取得したシフトデータと突合して、稼働ドライバーへ配送先を割り当てる。
+
+---
+
+## 技術スタック（確定）
+
+| レイヤー | 採用技術 | バージョン | 備考 |
+|---|---|---|---|
+| フレームワーク | Next.js App Router | 16.x | Vercel にデプロイ |
+| 言語 | TypeScript | 5.x | |
+| スタイリング | Tailwind CSS + shadcn/ui | v4 | |
+| ORM | Prisma + @prisma/adapter-pg | 7.x | |
+| DB | PostgreSQL | 16 | 開発: Docker / 本番: Neon |
+| 認証 | NextAuth.js v5 / Credentials + JWT | beta | |
+| パスワード | bcryptjs | — | |
+| OCR | Google Cloud Vision API | — | 要 API キー |
+| 地図 | Google Maps Geocoding API + Maps URL | — | 要 API キー |
+| 画像ストレージ | Vercel Blob | — | `@vercel/blob` 実装済み・要 `BLOB_READ_WRITE_TOKEN` |
+| CARIO連携 | REST API（フォールバック: モック） | — | 仕様確定後に `mapper.ts` 調整 |
+
+---
+
+## 実装ステップ進捗
+
+| # | ステップ | ステータス | 完了日 | 備考 |
+|---|---|---|---|---|
+| STEP 1 | 基盤構築（認証・権限・DB・Prisma・レイアウト） | ✅ 完了 | 2026-06-26 | DB は手動 migrate 必要 |
+| STEP 2 | 配車表画像取込 | ✅ 完了 | 2026-06-26 | 本番: Vercel Blob / 開発: ローカル /uploads（切替済み） |
+| STEP 3 | OCR処理 | ✅ 完了 | 2026-06-26 | Cloud Vision API・パーサー・要確認フラグ実装済み |
+| STEP 4 | OCR確認画面 | ✅ 完了 | 2026-06-26 | インライン編集・再バリデーション・確定機能 |
+| STEP 5 | CARIOシフト取込 | ✅ 完了 | 2026-06-27 | REST API クライアント実装済み・API未設定時はモックフォールバック |
+| STEP 6 | 割当機能 | ✅ 完了 | 2026-06-27 | 半自動割当・手動修正・確定機能 |
+| STEP 7 | ルート作成 | ✅ 完了 | 2026-06-29 | Geocoding・最近隣法・Google Maps URL・積み込みモード |
+| STEP 8 | ドライバー画面 | ✅ 完了 | 2026-06-29 | スマホ優先カードUI・本人確認・Maps URL |
+| STEP 9 | 管理者進捗画面 | ✅ 完了 | 2026-06-29 | ダッシュボード集計・ドライバー別進捗・詳細展開 |
+
+**ステータス凡例:** ⬜ 未着手 / ⚠️ 確認待ち / 🔄 作業中 / ✅ 完了
+
+> **🎉 STEP 1〜9 すべて完了。MVP 完成。**
+
+---
+
+## 現在のプロジェクト構成（STEP 9 完了 / MVP 完成）
+
+```
+src/
+├── app/
+│   ├── page.tsx                                # ロール別リダイレクト
+│   ├── login/page.tsx                          # ログイン画面
+│   ├── admin/
+│   │   ├── layout.tsx                          # 管理者レイアウト（Sidebar）
+│   │   ├── dashboard/page.tsx                  # ダッシュボード（スケルトン）
+│   │   ├── dispatch-images/page.tsx            # 配車表画像取込 ★STEP2
+│   │   ├── ocr-review/[id]/page.tsx            # OCR確認画面 ★STEP4
+│   │   ├── shifts/page.tsx                     # CARIOシフト取込 ★STEP5
+│   │   ├── assignments/page.tsx                # 割当機能 ★STEP6
+│   │   ├── routes/page.tsx                     # ルート確認 ★STEP7
+│   │   └── progress/page.tsx                   # 配送進捗 ★STEP9
+│   ├── driver/
+│   │   ├── layout.tsx
+│   │   └── today/page.tsx                          # ★STEP8 実装済み
+│   └── api/
+│       ├── auth/[...nextauth]/route.ts
+│       ├── ocr/[id]/route.ts                   # ★STEP3 POST: OCR実行
+│       ├── admin/dashboard/route.ts             # ★STEP9 GET: ダッシュボード集計
+│       ├── admin/progress/                     # ★STEP9
+│       │   ├── route.ts                        #   GET: ドライバー別進捗一覧
+│       │   └── [driverId]/route.ts             #   GET: ドライバー詳細
+│       ├── driver/                             # ★STEP8
+│       │   ├── today/route.ts                  #   GET: 本日の担当配送先（本人確認）
+│       │   └── delivery-items/[id]/
+│       │       ├── status/route.ts             #   PATCH: ステータス更新（本人確認）
+│       │       └── memo/route.ts               #   PATCH: 備考保存（本人確認）
+│       ├── routes/                             # ★STEP7
+│       │   ├── route.ts                        #   GET: ルート一覧
+│       │   ├── geocode/route.ts                #   POST: 住所→緯度経度
+│       │   ├── generate/route.ts               #   POST: 配送順生成
+│       │   └── loading-mode/route.ts           #   PATCH: 積み込みモード切替
+│       ├── assignments/                        # ★STEP6
+│       │   ├── route.ts                        #   GET: 明細+ドライバー+割当状態
+│       │   ├── auto/route.ts                   #   POST: 半自動割当
+│       │   ├── [id]/route.ts                   #   PATCH: 1行手動変更
+│       │   └── confirm/route.ts                #   POST: 割当確定
+│       ├── shifts/                             # ★STEP5
+│       │   ├── route.ts                        #   GET: 対象日シフト一覧
+│       │   └── import/route.ts                 #   POST: CARIO取込→DB保存
+│       ├── ocr-review/                         # ★STEP4
+│       │   └── [id]/
+│       │       ├── route.ts                    #   GET: 画像+明細取得
+│       │       ├── items/[itemId]/route.ts     #   PATCH: 明細1行更新
+│       │       └── confirm/route.ts            #   POST: OCR確定
+│       └── dispatch-images/                    # ★STEP2
+│           ├── route.ts                        #   GET: 一覧取得
+│           └── upload/route.ts                 #   POST: アップロード
+├── components/
+│   ├── admin/Sidebar.tsx
+│   ├── common/LoginForm.tsx
+│   ├── common/LogoutButton.tsx
+│   ├── dispatch/                               # ★STEP2
+│   │   ├── UploadForm.tsx
+│   │   ├── ImageHistoryList.tsx
+│   │   └── OcrStatusBadge.tsx
+│   ├── routes/                                 # ★STEP7
+│   │   ├── RouteClient.tsx
+│   │   └── RouteDriverPanel.tsx
+│   ├── admin/
+│   │   ├── Sidebar.tsx
+│   │   └── progress/                           # ★STEP9
+│   │       ├── ProgressClient.tsx
+│   │       └── ProgressDriverCard.tsx
+│   ├── driver/                                 # ★STEP8
+│   │   ├── TodayClient.tsx                     #   本日の配送一覧・集計チップ
+│   │   └── DeliveryCard.tsx                    #   配送先カード（スマホ優先）
+│   ├── assignments/                            # ★STEP6
+│   │   ├── AssignmentClient.tsx
+│   │   └── AssignmentSummary.tsx
+│   ├── shifts/                                 # ★STEP5
+│   │   ├── ShiftImportClient.tsx
+│   │   └── ShiftSummaryCard.tsx
+│   └── ocr/                                    # ★STEP4
+│       ├── OcrReviewClient.tsx                 #   確認画面メイン
+│       ├── DeliveryItemRow.tsx                 #   明細行（インライン編集）
+│       └── ReviewReasonBadge.tsx               #   要確認理由バッジ
+├── lib/
+│   ├── auth/auth.ts
+│   ├── auth/permissions.ts
+│   ├── prisma.ts
+│   ├── storage/                                # ★STEP2（差し替え可能）
+│   │   ├── types.ts                            #   StorageProvider interface（read()追加）
+│   │   ├── local.ts                            #   ローカル /uploads 保存・読込
+│   │   ├── filename.ts                         #   ファイル名生成
+│   │   └── index.ts                            #   アクティブ Provider export
+│   ├── ocr/                                    # ★STEP3,4
+│   │   ├── types.ts / vision.ts / dispatch-no.ts / parser.ts
+│   │   ├── validator.ts / index.ts / revalidate.ts
+│   ├── maps/                                   # ★STEP7
+│   │   ├── warehouse.ts                        #   美女木拠点定数（差し替え可能）
+│   │   ├── geocode.ts                          #   Geocoding API（サーバーサイドのみ）
+│   │   └── url.ts                             #   Google Maps 経路 URL 生成
+│   ├── routes/                                 # ★STEP7
+│   │   ├── sortByNearest.ts                    #   最近隣法（ハバーサイン距離）
+│   │   └── index.ts                            #   ルート生成オーケストレーター
+│   └── utils.ts
+├── types/
+│   ├── next-auth.d.ts
+│   ├── dispatch.ts                             # ★STEP2,4
+│   ├── shift.ts                               # ★STEP5
+│   ├── assignment.ts                          # ★STEP6
+│   ├── route.ts                               # ★STEP7
+│   └── progress.ts                            # ★STEP9（DashboardStats / DriverProgress / DeliveryProgress）
+└── middleware.ts
+prisma/
+├── schema.prisma
+├── seed.ts                                     # デフォルト（開発用）
+├── seed.dev.ts                                 # 開発用（管理者+テストドライバー）
+├── seed.prod.ts                                # 本番用（管理者のみ・PW環境変数）
+└── migrations/
+src/lib/storage/                                # ★ストレージ差し替えポイント
+├── vercel-blob.ts                              # Vercel Blob Provider（実装済み）
+└── s3.ts                                       # S3 Provider（実装案）
+docker-compose.yml
+DEPLOY.md                                       # 本番デプロイ手順書（作業分担・コマンド一覧）
+next.config.ts
+public/uploads/dispatch-images/                 # アップロード先（gitignore）
+.env.example                                    # 6カテゴリ分類・用途コメント付き
+.env.local                                      # gitignore 済み
+```
+
+---
+
+## STEP 1：基盤構築（✅ 完了）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| プロジェクト生成 | create-next-app（TypeScript / Tailwind / App Router / src dir） |
+| shadcn/ui | 初期化済み（Button コンポーネント等） |
+| Docker | PostgreSQL 16 コンテナ（docker-compose.yml） |
+| Prisma 7 | schema.prisma 8テーブル・validate 通過・generate 済み |
+| @prisma/adapter-pg | Prisma 7 の Driver Adapter 方式で接続 |
+| NextAuth.js v5 | Credentials Provider + JWT strategy（@auth/prisma-adapter 不使用） |
+| ロール | ADMIN / DRIVER（Session 型に追加） |
+| middleware.ts | 未認証→/login、DRIVER→/admin 不可、ADMIN→/driver 不可 |
+| bcryptjs | seed.ts でハッシュ化、ログイン時に検証 |
+| TypeScript | 型チェック エラーゼロ確認済み |
+
+### DBテーブル（8テーブル）
+
+```
+users            id / email / password_hash / role(ADMIN|DRIVER) / created_at / updated_at
+drivers          id / user_id(→users) / cario_driver_id / name / phone / company_name / area / vehicle_id
+shifts           id / driver_id / work_date / start_time / end_time / status / source
+dispatch_images  id / delivery_date / area / wave_no / image_url / ocr_status / imported_at
+delivery_items   id / dispatch_image_id / dispatch_key / wave_no / vehicle_no / delivery_seq /
+                 invoice_no / customer_name / customer_phone / address / special_flag /
+                 normal_oricon_count / cooler_box_count / case_count / total_count /
+                 memo / lat / lng / ocr_notes / ocr_status / delivery_status
+assignments      id / delivery_item_id / driver_id / route_order / wave_no / loading_group /
+                 is_split_loading / status
+route_groups     id / driver_id / delivery_date / wave_group / loading_mode /
+                 start_location / end_location / return_to_warehouse
+audit_logs       id / user_id / action / target_type / target_id / before_data / after_data / created_at
+```
+
+### 動作確認手順（手動実行が必要）
+
+```bash
+# 1. PostgreSQL 起動
+docker compose up -d
+
+# 2. マイグレーション（初回のみ）
+npm run db:migrate        # migration name: "init"
+
+# 3. 管理者アカウント作成
+npm run db:seed           # admin@delivery-app.local / admin1234
+
+# 4. 開発サーバー起動
+npm run dev
+
+# 5. ブラウザ確認
+# http://localhost:3000 → /login
+# admin@delivery-app.local / admin1234 でログイン
+# → /admin/dashboard に遷移すれば完了
+```
+
+### ロール別リダイレクト仕様
+
+| 条件 | 遷移先 |
+|---|---|
+| 未認証 → /admin/* | /login |
+| 未認証 → /driver/* | /login |
+| DRIVER → /admin/* | /driver/today |
+| ADMIN → /driver/* | /admin/dashboard |
+| ログイン後（ADMIN） | /admin/dashboard |
+| ログイン後（DRIVER） | /driver/today |
+
+### 保留事項
+
+| # | 内容 |
+|---|---|
+| 1 | `prisma migrate dev` は Docker 起動後に手動実行 |
+| 2 | `prisma db seed` は migrate 後に手動実行 |
+| 3 | LoginForm の `router.push("/")` → ルートページでロール判定してリダイレクト済み |
+
+---
+
+## STEP 2：配車表画像取込（✅ 完了）
+
+**ステータス:** ✅ 完了（コード実装・型チェック通過済み）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| 画像ストレージ | ローカル `public/uploads/dispatch-images/`（gitignore 済み） |
+| storage 抽象化 | `src/lib/storage/` に StorageProvider interface を定義。`index.ts` の1行差し替えで Vercel Blob / S3 に移行可能 |
+| ファイル名 | `{YYYYMMDD}_{area}_{waveNo}_{timestamp}.{ext}` 形式で重複回避 |
+| 対応形式 | jpg / jpeg / png / webp（10MB 以下） |
+| API | POST `/api/dispatch-images/upload`・GET `/api/dispatch-images`（ADMIN のみ） |
+| DB 保存 | `dispatch_images` テーブルへ INSERT |
+| 操作ログ | アップロード時に `audit_logs` へ記録 |
+| UI | アップロードフォーム（配送日・エリア・W番号・プレビュー）・取込履歴テーブル |
+| 権限 | admin/layout.tsx の `requireAdmin()` で ADMIN のみ。API も二重チェック |
+| TypeScript | 型チェック エラーゼロ |
+
+### タスク一覧
+
+- [x] 画像アップロードUI（`/admin/dispatch-images`）
+- [x] ローカル `/uploads` への保存（storage 抽象化）
+- [x] `dispatch_images` テーブルへ保存
+- [x] 取込履歴一覧表示
+- [x] OCRステータスバッジ表示（未処理 / 処理中 / 要確認 / 完了 / エラー）
+- [x] アップロード前プレビュー表示
+- [x] アクセス権限チェック（管理者のみ・API も二重チェック）
+- [x] 操作ログ（audit_logs）記録
+- [x] `next.config.ts` 画像設定追加
+
+### 動作確認手順
+
+```bash
+# DB 起動・migrate 済みの状態で
+npm run dev
+
+# 1. http://localhost:3000/admin/dispatch-images にアクセス
+# 2. 配送日・エリア・W番号を入力
+# 3. jpg / png 画像を選択 → プレビュー表示を確認
+# 4. アップロードボタン押下
+# 5. public/uploads/dispatch-images/ にファイルが保存される
+# 6. 取込履歴に表示される（OCRステータス: 未処理）
+# 7. ドライバーアカウントでアクセス → /driver/today へリダイレクト
+```
+
+### ストレージ差し替え方法（将来対応）
+
+```typescript
+// src/lib/storage/index.ts を1行変更するだけ
+// 現在: export { localStorageProvider as storageProvider } from "./local";
+// 変更: export { vercelBlobProvider as storageProvider } from "./vercel-blob";
+// 変更: export { s3Provider as storageProvider } from "./s3";
+```
+
+### 保留事項
+
+| # | 内容 |
+|---|---|
+| 1 | ~~詳細ボタンのリンク先（`/admin/ocr-review/[id]`）は STEP 4 で実装~~ → ✅ STEP 4 で実装済み |
+| 2 | 本番環境では Vercel Blob または S3 への差し替えを推奨 |
+
+---
+
+## STEP 3：OCR処理（✅ 完了）
+
+**ステータス:** ✅ 完了（コード実装・型チェック通過済み）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| OCR エンジン | Google Cloud Vision API（DOCUMENT_TEXT_DETECTION） |
+| 認証方式 | API キー（`GOOGLE_CLOUD_VISION_API_KEY` 環境変数） |
+| 画像読み込み | 既存 `StorageProvider.read()` を経由（`local.ts` に実装） |
+| テキストパース | 配車No起点の行ブロック分割・正規表現抽出 |
+| 配車No分解 | `W1-11-1` → `waveNo / vehicleNo / deliverySeq` |
+| 数量分解 | 左から 常温オリコン / クーラーボックス / ケース / 総数 |
+| 要確認フラグ | `ocr_notes` カラムに JSON 配列で理由を保存 |
+| OCR完了後ステータス | `REVIEW_REQUIRED`（STEP4確認後に `CONFIRMED`） |
+| API | POST `/api/ocr/[id]`（ADMIN のみ・202 即時返却） |
+| UI | 取込履歴に「OCR実行」ボタン・「確認・修正」リンク追加 |
+| 個人情報 | ログに氏名・電話・住所を出力しない設計 |
+| TypeScript | 型チェック エラーゼロ |
+
+### タスク一覧
+
+- [x] `src/lib/ocr/types.ts`（型定義）
+- [x] `src/lib/ocr/vision.ts`（Cloud Vision API 呼び出し）
+- [x] `src/lib/ocr/dispatch-no.ts`（配車No分解）
+- [x] `src/lib/ocr/parser.ts`（OCRテキストパース）
+- [x] `src/lib/ocr/validator.ts`（要確認フラグ付与）
+- [x] `src/lib/ocr/index.ts`（OCRオーケストレーター）
+- [x] `src/app/api/ocr/[id]/route.ts`（OCR実行API）
+- [x] `ImageHistoryList.tsx` に OCR実行ボタン追加
+- [x] `StorageProvider` に `read()` 追加
+- [x] `schema.prisma` に `ocr_notes` 追加・generate
+- [x] `.env.example` / `.env.local` 更新
+
+### 要確認フラグ（ReviewReason）一覧
+
+| フラグ | 条件 |
+|---|---|
+| `DISPATCH_KEY_MISSING` | 配車Noが読み取れない |
+| `WAVE_NO_MISSING` | W番号が不明 |
+| `VEHICLE_NO_MISSING` | 号車番号が不明 |
+| `ADDRESS_EMPTY` | 住所が空欄 |
+| `PHONE_INVALID` | 電話番号形式が不自然 |
+| `COUNT_MISMATCH` | 常温+クーラー+ケース ≠ 総数 |
+| `INVOICE_DUPLICATE` | 同一伝票Noが重複 |
+
+### 動作確認手順
+
+```bash
+# 1. GOOGLE_CLOUD_VISION_API_KEY を .env.local に設定
+# 2. Docker 起動・migrate 済みの状態で
+npm run dev
+
+# 3. /admin/dispatch-images で画像をアップロード
+# 4. 取込履歴の「OCR実行」ボタンをクリック
+# 5. OCRステータスが PROCESSING → REVIEW_REQUIRED に変わる
+# 6. delivery_items テーブルに明細行が作成されている
+# 7. 要確認の行は ocr_notes に ["COUNT_MISMATCH"] 等が記録されている
+```
+
+### 保留事項
+
+| # | 内容 |
+|---|---|
+| 1 | `GOOGLE_CLOUD_VISION_API_KEY` の設定が必要（キーなしは ERROR になる） |
+| 2 | パーサーは L1M 配車表レイアウト前提の正規表現ベース。実際の画像で精度調整が必要な場合は STEP 4 の修正画面で対応 |
+| 3 | `prisma migrate dev` で `ocr_notes` カラムの追加 migration を実行すること |
+| 4 | OCR結果の自動確定なし。必ず STEP 4 管理者確認を経由する |
+
+---
+
+## STEP 4：OCR確認画面（✅ 完了）
+
+**ステータス:** ✅ 完了（コード実装・型チェック通過済み）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| パス | `/admin/ocr-review/[id]`（ADMIN のみ） |
+| レイアウト | PC: 左右2カラム（元画像 sticky / 明細テーブル）。SP: 縦並び |
+| インライン編集 | 行クリック→入力フィールド→保存/キャンセル |
+| 再バリデーション | 保存後に `revalidate.ts` で配車No再分解＋全チェック |
+| エラーハイライト | 赤（DISPATCH_KEY等5種）/ オレンジ（PHONE_INVALID・COUNT_MISMATCH） |
+| 確定ボタン | 要確認残あり→警告ダイアログ。確定後 `CONFIRMED` に更新 |
+| OCR未実行 | `PENDING` / `PROCESSING` の場合は「OCR未実行」メッセージ表示 |
+| 操作ログ | `audit_logs` に編集フィールド名のみ記録（値は個人情報除外） |
+| 権限 | `admin/layout.tsx` の `requireAdmin()` + 各API で二重チェック |
+| TypeScript | 型チェック エラーゼロ |
+
+### タスク一覧
+
+- [x] `/admin/ocr-review/[id]/page.tsx`（Server Component）
+- [x] `GET /api/ocr-review/[id]`（画像+明細取得）
+- [x] `PATCH /api/ocr-review/[id]/items/[itemId]`（明細1行更新・再バリデーション）
+- [x] `POST /api/ocr-review/[id]/confirm`（OCR確定）
+- [x] `OcrReviewClient.tsx`（確認画面メイン）
+- [x] `DeliveryItemRow.tsx`（インライン編集）
+- [x] `ReviewReasonBadge.tsx`（要確認理由バッジ・ハイライト）
+- [x] `src/lib/ocr/revalidate.ts`（編集後再バリデーション）
+- [x] `src/types/dispatch.ts` に `DeliveryItem` 型追加
+
+### 動作確認手順
+
+```bash
+npm run dev
+
+# 1. /admin/dispatch-images で画像アップロード → OCR実行
+# 2. OCRステータスが REVIEW_REQUIRED になったら「確認・修正」クリック
+# 3. /admin/ocr-review/[id] が表示される
+#    左: 元画像 / 右: 明細テーブル
+# 4. 要確認行が赤/オレンジでハイライトされている
+# 5. 「編集」ボタンで各項目を修正 → 「保存」
+# 6. 保存後に要確認理由が再計算される
+# 7. 「OCR結果を確定」→ dispatch_images.ocr_status が CONFIRMED に
+```
+
+### 保留事項
+
+| # | 内容 |
+|---|---|
+| 1 | 住所 Geocoding プレビュー（STEP 7 で実装） |
+| 2 | CONFIRMED になった画像のみ STEP 6 割当対象とする制御は STEP 6 で実装 |
+
+---
+
+## STEP 5：CARIOシフト取込（✅ 完了）
+
+**ステータス:** ✅ 完了（コード実装・型チェック通過済み）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| CARIO接続 | モック実装（関数差し替えで API/CSV/DB に対応可能） |
+| 抽象化 | `src/lib/cario/` に `fetchCarioDrivers` / `fetchCarioShifts` を分離。コメントに差し替え方法を明記 |
+| upsert | `drivers`: `carioDriverId` でキー。`shifts`: `driverId + workDate` 複合ユニークでキー |
+| schema 変更 | `Driver.userId` を nullable に変更、`Driver.carioDriverId` に `@unique` 追加、`Shift` に複合ユニーク追加 |
+| 画面 | 対象日選択・取込ボタン・サマリーカード（会社別/エリア別）・ドライバー一覧テーブル |
+| 操作ログ | `audit_logs` に件数のみ記録（個人情報なし） |
+| 権限 | `admin/layout.tsx` の `requireAdmin()` + API 二重チェック |
+| TypeScript | 型チェック エラーゼロ |
+
+### タスク一覧
+
+- [x] `src/lib/cario/types.ts`（CarioDriver / CarioShift / ImportSummary）
+- [x] `src/lib/cario/getDrivers.ts`（REST API / モックフォールバック実装済み）
+- [x] `src/lib/cario/getShifts.ts`（REST API / モックフォールバック実装済み）
+- [x] `src/lib/cario/index.ts`
+- [x] `POST /api/shifts/import`（upsert + audit_log）
+- [x] `GET /api/shifts?date=`（一覧 + 集計）
+- [x] `ShiftImportClient.tsx`（取込UI・一覧テーブル）
+- [x] `ShiftSummaryCard.tsx`（サマリーカード）
+- [x] `/admin/shifts/page.tsx`
+- [x] `src/types/shift.ts`
+- [x] `prisma/schema.prisma` 変更 + generate
+
+### CARIO実API差し替え方法（将来対応）
+
+```typescript
+// src/lib/cario/getDrivers.ts の中のモック部分を以下に差し替える:
+// REST API: return fetch(process.env.CARIO_API_BASE_URL + "/drivers")
+// CSV:      return parseCsv(await fs.readFile(csvPath))
+// DB:       return new PrismaClient({ datasourceUrl: process.env.CARIO_DB_URL })
+```
+
+### 動作確認手順
+
+```bash
+npm run db:migrate   # make_driver_user_id_optional migration
+npm run dev
+
+# /admin/shifts にアクセス
+# 日付を選択 →「CARIOシフト取込」ボタン
+# drivers / shifts テーブルに5件ずつ保存される
+# サマリーカード（会社別・エリア別）と一覧テーブルが表示される
+# 同日に再実行しても重複登録されない（upsert）
+```
+
+### 保留事項
+
+| # | 内容 |
+|---|---|
+| 1 | CARIO接続方式が確定したら `getDrivers.ts` / `getShifts.ts` の本体を差し替える |
+| 2 | `CARIO_API_BASE_URL` / `CARIO_API_KEY` 等の環境変数は接続方式確定後に設定 |
+
+---
+
+## STEP 6：割当機能（✅ 完了）
+
+**ステータス:** ✅ 完了（コード実装・型チェック通過済み）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| 画面 | `/admin/assignments`（ADMIN のみ）|
+| フィルター | 配送日 / W番号 / エリアで絞り込み |
+| 半自動割当 | `vehicleNo` 単位でグループ化 → ドライバーへ round-robin 均等分配 |
+| 手動修正 | セレクトボックスでドライバーを変更（PATCH API） |
+| 割当確定 | `assignments` upsert + `delivery_items.delivery_status = ASSIGNED` |
+| 集計表示 | 未割当/割当済み/ドライバー別/W番号別/号車別件数 |
+| 割当条件 | CONFIRMED OCR・シフト登録済み・ABSENT 以外・車両あり |
+| 操作ログ | `audit_logs` に件数のみ記録（個人情報なし） |
+| schema 変更 | `Assignment.deliveryItemId @unique` 追加（upsert 可能に） |
+| TypeScript | 型チェック エラーゼロ |
+
+### タスク一覧
+
+- [x] `src/types/assignment.ts`
+- [x] `src/lib/assignment/autoAssign.ts`（vehicleNo グループ + round-robin）
+- [x] `GET /api/assignments`（明細 + ドライバー + 集計）
+- [x] `POST /api/assignments/auto`（半自動割当）
+- [x] `PATCH /api/assignments/[id]`（手動変更）
+- [x] `POST /api/assignments/confirm`（確定）
+- [x] `AssignmentClient.tsx`（メインUI）
+- [x] `AssignmentSummary.tsx`（集計カード）
+- [x] `/admin/assignments/page.tsx`
+- [x] `prisma/schema.prisma` `@unique` 追加 + generate
+
+### 動作確認手順
+
+```bash
+npm run db:migrate   # add_unique_to_assignment_delivery_item_id migration
+npm run dev
+
+# 前提: STEP 4 で OCR 確定済み・STEP 5 でシフト取込済み
+# /admin/assignments にアクセス
+# 配送日を選択 →「一覧を表示」→ 配送明細と稼働ドライバーが表示
+# 「半自動割当」→ ドライバーに均等分配される
+# セレクトボックスで手動変更可能
+# 「割当確定」→ assignments テーブルに保存・delivery_status = ASSIGNED
+```
+
+### 保留事項
+
+| # | 内容 |
+|---|---|
+| 1 | 手動変更（select 変更時）の未割当 → 新規割当は STEP 6 では省略。`handleDriverChange` は既存割当の変更のみ対応 |
+| 2 | 住所Geocoding・ルート順序・同時/分割積み込みは STEP 7 で実装 |
+| 3 | ~~ドライバー画面への反映は STEP 8 で実装~~ → ✅ STEP 8 で実装済み |
+
+---
+
+## STEP 7：ルート作成（✅ 完了）
+
+**ステータス:** ✅ 完了（コード実装・型チェック通過済み）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| 美女木拠点 | `warehouse.ts`（座標・住所は暫定値、1ファイル差し替えで更新可能） |
+| Geocoding | `geocode.ts`（Geocoding API・サーバーサイドのみ・失敗は ADDRESS_ERROR） |
+| Google Maps URL | `url.ts`（APIキーなし・10件超は複数 URL 分割） |
+| 配送順ソート | `sortByNearest.ts`（最近隣法・ハバーサイン距離） |
+| ルート生成 | `routes/index.ts`（ドライバー別に route_order → RouteGroup upsert） |
+| 積み込みモード | RouteGroup.loadingMode: SIMULTANEOUS / SPLIT（セレクトで切替） |
+| 倉庫戻り/直帰 | RouteGroup.returnToWarehouse（W5/W6終了後をセレクトで切替） |
+| schema 変更 | RouteGroup に `@@unique([driverId, deliveryDate, waveGroup])` 追加 |
+| TypeScript | 型チェック エラーゼロ |
+
+### タスク一覧
+
+- [x] `src/lib/maps/warehouse.ts`（美女木拠点定数）
+- [x] `src/lib/maps/geocode.ts`（Geocoding API）
+- [x] `src/lib/maps/url.ts`（Google Maps 経路 URL・上限分割対応）
+- [x] `src/lib/routes/sortByNearest.ts`（最近隣法）
+- [x] `src/lib/routes/index.ts`（ルート生成）
+- [x] `src/types/route.ts`
+- [x] `GET /api/routes`
+- [x] `POST /api/routes/geocode`
+- [x] `POST /api/routes/generate`
+- [x] `PATCH /api/routes/loading-mode`
+- [x] `RouteClient.tsx` / `RouteDriverPanel.tsx`
+- [x] `/admin/routes/page.tsx`
+- [x] `prisma/schema.prisma` RouteGroup @unique 追加 + generate
+
+### 動作確認手順
+
+```bash
+npm run db:migrate   # add_unique_to_route_groups migration
+npm run dev
+
+# 前提: GOOGLE_MAPS_API_KEY を .env.local に設定
+# 前提: STEP 6 で割当確定済み
+
+# /admin/routes にアクセス
+# 配送日を選択 →「一覧を表示」
+# →「住所 Geocode」ボタン → lat/lng が delivery_items に保存
+# →「ルート生成」ボタン → route_order が assignments に保存
+# → ドライバーカードに Google Maps URL が表示される
+# → 積み込みモード・倉庫戻りをセレクトで切り替えられる
+```
+
+### 保留事項
+
+| # | 内容 |
+|---|---|
+| 1 | `GOOGLE_MAPS_API_KEY` が未設定の場合、Geocode は失敗して ADDRESS_ERROR になる |
+| 2 | 美女木の正確な座標は `warehouse.ts` の lat/lng を更新すること |
+| 3 | ~~ドライバー画面での Google Maps 起動は STEP 8 で実装~~ → ✅ STEP 8 で実装済み |
+| 4 | 分割積み込み時の倉庫戻り挿入はルート生成時に `returnToWarehouse = true` で対応済み |
+
+---
+
+## STEP 8：ドライバー画面（✅ 完了）
+
+**ステータス:** ✅ 完了（コード実装・型チェック通過済み）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| 画面 | `/driver/today`（DRIVER のみ・スマホ優先カードUI） |
+| 本人確認 | 全 API で `assignment.driverId === session.user.driverId` DB 照合 |
+| 配送順 | `route_order` 昇順ソート、Google Maps URL 付与 |
+| ステータス更新 | COMPLETED / ABSENT / RETURNED / SKIPPED（ボタン1タップ） |
+| 備考入力 | `delivery_items.memo` に保存 |
+| 集計チップ | 未完了・完了・不在・持戻り・スキップ件数を色分け表示 |
+| Google Maps | STEP 7 の `buildMapsUrls()` を再利用・URLにAPIキー含まず |
+| 個人情報 | 住所・氏名・電話番号を console.log しない |
+| TypeScript | 型チェック エラーゼロ |
+
+### タスク一覧
+
+- [x] `GET /api/driver/today`（本人確認・route_order ソート・Maps URL 付与）
+- [x] `PATCH /api/driver/delivery-items/[id]/status`（本人確認・403 対応）
+- [x] `PATCH /api/driver/delivery-items/[id]/memo`（本人確認・403 対応）
+- [x] `DeliveryCard.tsx`（スマホ優先カード・ステータスボタン・備考入力）
+- [x] `TodayClient.tsx`（一覧・集計チップ・Maps URL 表示）
+- [x] `driver/today/page.tsx`（スケルトン → 実装に差し替え）
+
+### 動作確認手順
+
+```bash
+npm run dev
+
+# ドライバーアカウントでログイン（STEP 5 で取り込んだドライバー）
+# → /driver/today にアクセス
+# → 本日割当済みの配送先のみ表示される
+# → [完了] ボタンでステータスが緑に変わる
+# → 「Googleマップで開く」でナビ起動
+# → 備考入力 → [保存]
+
+# ADMIN でアクセス → /admin/dashboard へリダイレクト
+# 他ドライバーの delivery_item_id を PATCH → 403
+```
+
+### 保留事項
+
+| # | 内容 |
+|---|---|
+| 1 | DRIVER アカウントは `prisma/seed.ts` の管理者アカウントとは別に作成が必要 |
+| 2 | 管理者側でドライバー別進捗を確認する機能は STEP 9 で実装 |
+
+---
+
+## STEP 9：管理者進捗画面（✅ 完了）
+
+**ステータス:** ✅ 完了（コード実装・型チェック通過済み）
+
+### 実装内容
+
+| 項目 | 内容 |
+|---|---|
+| ダッシュボード | `/admin/dashboard` Server Component で本日の集計を実データ表示 |
+| 集計項目 | 取込済み配車表・OCR未確認・住所エラー・数量エラー・未割当・稼働ドライバー・割当済み・完了・不在・持戻り・スキップ・未完了 |
+| 進捗画面 | `/admin/progress` でドライバー別進捗・全体進捗バー・集計チップ |
+| ドライバーカード | 完了率バー・ステータス集計・詳細展開（配送明細テーブル） |
+| フィルター | 配送日・エリア・W番号で絞り込み |
+| 異常ハイライト | 不在・持戻りがあるカードにオレンジ枠 |
+| 色分け | COMPLETED 緑・ABSENT オレンジ・RETURNED 赤・SKIPPED グレー |
+| 個人情報 | 住所・氏名・電話番号を console.log しない |
+| TypeScript | 型チェック エラーゼロ |
+
+### タスク一覧
+
+- [x] `src/types/progress.ts`（DashboardStats / DriverProgress / DeliveryProgress）
+- [x] `GET /api/admin/dashboard`（本日の集計）
+- [x] `GET /api/admin/progress`（ドライバー別進捗一覧）
+- [x] `GET /api/admin/progress/[driverId]`（ドライバー詳細）
+- [x] `ProgressClient.tsx`（進捗画面メイン）
+- [x] `ProgressDriverCard.tsx`（ドライバーカード・詳細展開）
+- [x] `/admin/progress/page.tsx`
+- [x] `/admin/dashboard/page.tsx`（スケルトン → 実データ表示）
+
+### 動作確認手順
+
+```bash
+npm run dev
+
+# /admin/dashboard にアクセス → 本日の集計が数値で表示される
+# 「詳細進捗を見る」リンクから /admin/progress へ
+# 配送日を選択 →「進捗を表示」→ ドライバーカードが表示される
+# 「詳細」ボタンで配送明細テーブルが展開される
+# 不在・持戻りがあるカードはオレンジ枠でハイライト
+```
+
+---
+
+## MVP完了条件チェックリスト（全 15 項目 完了）
+
+- [x] CARIOから対象日のシフトデータを取得できる（STEP 5）
+- [x] 配車表画像を取り込める（STEP 2）
+- [x] OCRで配車No・住所・数量を読み取れる（STEP 3）
+- [x] W1-11-1形式の配車Noを分解して保存できる（STEP 3）
+- [x] 数量欄を4項目に分けて保存できる（STEP 3）
+- [x] 数量合計エラーを検知できる（STEP 3）
+- [x] OCR結果を管理者が修正できる（STEP 4）
+- [x] 住所をGoogleマップ用に変換できる（STEP 7）
+- [x] ドライバーに配送先を割り当てできる（STEP 6）
+- [x] 同時積み込み／分割積み込みを選択できる（STEP 7）
+- [x] 倉庫戻り地点をルートに挿入できる（STEP 7）
+- [x] ドライバー画面に自分の配送先だけ表示できる（STEP 8）
+- [x] Googleマップで配送先を開ける（STEP 8）
+- [x] 配達完了・不在・持戻りを更新できる（STEP 8）
+- [x] 管理者が配送進捗を確認できる（STEP 9）
+
+---
+
+## 品質確認結果（2026-06-29 実施）
+
+| 確認項目 | 結果 | 備考 |
+|---|---|---|
+| TypeScript 型チェック | ✅ エラーゼロ | `tsc --noEmit` |
+| ESLint | ✅ エラーゼロ | 4件修正（set-state-in-effect 2件・未使用変数 2件） |
+| next build | ✅ 成功 | Prisma 7 の既知 Turbopack 警告 2件（機能影響なし） |
+| seed.ts DRIVER アカウント | ✅ 追加済み | tanaka / sato / suzuki（driver1234） |
+| README | ✅ 作成済み | セットアップ手順・業務フロー・本番化前チェックリスト含む |
+| `npm run typecheck` スクリプト | ✅ 追加済み | package.json に追加 |
+
+### 修正したファイル
+
+| ファイル | 問題 | 対応 |
+|---|---|---|
+| `src/components/dispatch/ImageHistoryList.tsx` | `react-hooks/set-state-in-effect` | eslint-disable 追加 |
+| `src/components/driver/TodayClient.tsx` | `react-hooks/set-state-in-effect` | eslint-disable 追加 |
+| `src/components/routes/RouteClient.tsx` | `setDriverId` 未使用 | setter を除去 |
+| `src/lib/cario/getDrivers.ts` | `_date` 未使用 | eslint-disable 追加 |
+| `prisma/seed.ts` | DRIVER アカウントなし | 3ドライバー追加 |
+| `README.md` | デフォルト内容のみ | MVP 向け全面改訂 |
+| `package.json` | typecheck スクリプトなし | `tsc --noEmit` を追加 |
+
+---
+
+## 本番化準備フェーズ（実装済み）
+
+### 実装済みファイル一覧（本番化準備フェーズ）
+
+| ファイル | 種別 | 内容 |
+|---|---|---|
+| `prisma/seed.prod.ts` | 新規 | 本番用 seed（管理者のみ・PW は環境変数） |
+| `prisma/seed.dev.ts` | 新規 | 開発用 seed（テストドライバー含む） |
+| `prisma/seed.ts` | 変更 | 開発用であることをコメントで明示 |
+| `src/lib/storage/vercel-blob.ts` | **本実装** | `@vercel/blob` を使った完全実装（`BLOB_READ_WRITE_TOKEN`） |
+| `src/lib/storage/s3.ts` | 実装案 | S3 用 Provider（TODO コメント付き） |
+| `src/lib/storage/index.ts` | **変更** | Vercel Blob Provider に切り替え済み |
+| `src/lib/cario/client.ts` | 新規 | CARIO API fetch・認証・エラーハンドリング・タイムアウト |
+| `src/lib/cario/mapper.ts` | 新規 | API レスポンス → 内部型変換（TODO マッピング調整） |
+| `src/lib/cario/getDrivers.ts` | **変更** | ENV 分岐（API 設定済 → REST API / 未設定 → モック） |
+| `src/lib/cario/getShifts.ts` | **変更** | ENV 分岐（API 設定済 → REST API / 未設定 → モック） |
+| `src/app/api/shifts/import/route.ts` | 変更 | `CarioApiError` をキャッチしてユーザーに伝える |
+| `.env.example` | **変更** | 本番方針（Vercel/Neon/Blob）確定版・用途コメント付き |
+| `package.json` | 変更 | `db:seed:prod` スクリプト追加 |
+| `README.md` | **変更** | 本番セットアップ手順（Vercel+Neon+Blob+CARIO）を全面改訂 |
+
+### まだ情報待ちの項目（残作業）
+
+| 項目 | 必要な情報 | 作業内容 |
+|---|---|---|
+| 美女木拠点の正確な座標 | 緯度・経度・正式住所 | `warehouse.ts` を1か所更新 |
+| Neon DB URL | Neon プロジェクト作成後 | Vercel 環境変数に設定 |
+| Google API キー（本番） | Google Cloud Console で発行 | Vercel 環境変数に設定 |
+| CARIO API エンドポイント仕様 | CARIO 側から API 仕様書を受領 | `mapper.ts` のフィールドマッピングを調整 |
+| CARIO API キー（本番） | CARIO 側から払い出し | Vercel 環境変数に設定 |
+| 本番管理者パスワード | 決定後 | `npm run db:seed:prod` 実行時に使用 |
+| Vercel Blob ストア | Vercel ダッシュボードで作成 | `BLOB_READ_WRITE_TOKEN` を Vercel 環境変数に設定 |
+
+### 次にこちらが決めるべきこと
+
+1. **Neon プロジェクト作成** → `DATABASE_URL` を取得
+2. **Vercel Blob ストア作成** → `BLOB_READ_WRITE_TOKEN` を取得
+3. **Google API キー発行** → Cloud Console で Geocoding / Vision API を有効化
+4. **CARIO API 仕様書の受領** → `mapper.ts` のマッピングを実際のフィールドに調整
+5. **美女木拠点の正確な座標確認** → `warehouse.ts` を1行更新
+6. **本番用パスワード決定** → `npm run db:seed:prod` で管理者アカウント作成
+
+---
+
+### 現状サマリー
+
+| 項目 | 現状 | 必要な作業 |
+|---|---|---|
+| 画像ストレージ | ローカル `/uploads/`（gitignore済み） | Vercel Blob または S3 へ1行差し替え |
+| CARIO連携 | モックデータ（5名分ハードコード） | 実API / CSV / DB接続へ差し替え |
+| 美女木拠点座標 | 暫定値（35.8326, 139.6564） | 正確な値に更新 |
+| DB | ローカル Docker | 本番 PostgreSQL へ切り替え |
+| console出力 | error 2件のみ（個人情報なし） | ✅ 問題なし |
+| テスト用 seed | 管理者 + ドライバー3名 | 本番 seed に含めない |
+
+### 優先順位別 作業計画
+
+| 優先度 | 作業 | 変更ファイル | 工数 |
+|---|---|---|---|
+| **必須①** | 環境変数を本番値に設定 | `.env.local`（サーバー） | 30分 |
+| **必須②** | 本番 DB へ `prisma migrate deploy` | — | 15分 |
+| **必須③** | 本番用管理者アカウント作成 | `prisma/seed.ts` 分離 | 15分 |
+| **必須④** | CARIO 接続方式確定・差し替え | `getDrivers.ts` / `getShifts.ts` | 接続方式次第 |
+| **重要①** | 画像ストレージを Vercel Blob / S3 に変更 | `src/lib/storage/index.ts`（1行） | 2〜4時間 |
+| **重要②** | 美女木拠点の正確な座標を設定 | `src/lib/maps/warehouse.ts` | 30分 |
+| **重要③** | 実際の配車表でOCR精度検証・調整 | `src/lib/ocr/parser.ts` | 数日 |
+| **任意①** | デプロイ先（Vercel vs VPS）確定 | — | 意思決定次第 |
+| **任意②** | スマホ実機でドライバー画面確認 | — | 1時間 |
+
+### モック差し替え箇所一覧
+
+**差し替えが必要なファイルは 2ファイルのみ**
+
+| ファイル | 変更内容 | 他ファイルへの影響 |
+|---|---|---|
+| `src/lib/cario/getDrivers.ts` | `return [...]` → API/CSV/DB呼び出し | なし |
+| `src/lib/cario/getShifts.ts` | `return [...]` → API/CSV/DB呼び出し | なし |
+
+接続方式別の必要環境変数：
+
+| 方式 | 必要な環境変数 |
+|---|---|
+| REST API | `CARIO_API_BASE_URL` `CARIO_API_KEY` `CARIO_API_SECRET` |
+| CSV出力 | CSV保存パス または SFTP 設定 |
+| DB直接参照 | `CARIO_DB_URL` |
+| 画面スクレイピング | `DISPATCH_SITE_BASE_URL` `DISPATCH_SITE_USERNAME` `DISPATCH_SITE_PASSWORD` |
+
+### 画像ストレージ差し替え手順
+
+```typescript
+// src/lib/storage/index.ts を1行変更するだけ
+// 現在（ローカル）:
+export { localStorageProvider as storageProvider } from "./local";
+
+// Vercel Blob へ変更:
+export { vercelBlobProvider as storageProvider } from "./vercel-blob";
+
+// S3 へ変更:
+export { s3Provider as storageProvider } from "./s3";
+// ↑ 新しい Provider ファイルを StorageProvider インターフェースに沿って作成するだけ
+```
+
+### 本番投入 NG 項目
+
+| NG項目 | 場所 | 対応 |
+|---|---|---|
+| テスト用 DRIVER アカウント（tanaka/sato/suzuki） | `prisma/seed.ts` | 本番 seed から除外 |
+| 開発用パスワード（admin1234/driver1234） | `prisma/seed.ts` | 本番用に変更 |
+| ローカル Docker の `DATABASE_URL` | `.env.local` | 本番 DB の URL に変更 |
+| 暫定 `NEXTAUTH_SECRET` | `.env.local` | `openssl rand -base64 32` で新規生成 |
+| ローカル `/uploads/` の画像 | `public/uploads/` | gitignore 済み・持ち込まない |
+| CARIO モックの個人名・電話番号 | `getDrivers.ts` | 実接続後はモックごと削除 |
+
+### デプロイ先候補比較
+
+| 比較項目 | Vercel + Neon（推奨） | 自社 VPS / Docker |
+|---|---|---|
+| 初期設定 | ◎ git push でデプロイ | △ サーバー構築が必要 |
+| 月額費用 | △ $20〜50/月 | ○ $10〜20/月 |
+| 画像保存 | ◎ Vercel Blob（1行差し替え） | △ S3 or ローカル設定 |
+| DB運用 | ◎ マネージド・自動バックアップ | △ 手動管理が必要 |
+| 環境変数管理 | ◎ GUI ダッシュボード | △ ファイル手動管理 |
+| Next.js 最適化 | ◎ 製作元 | △ nginx 設定が必要 |
+| **推奨** | **MVP 初期本番運用に最適** | **コスト重視・社内利用向け** |
+
+### 本番化前チェックリスト
+
+#### インフラ・環境
+- [ ] 画像ストレージを Vercel Blob または S3 に変更（`src/lib/storage/index.ts` 1行変更）
+- [ ] 本番 PostgreSQL への `DATABASE_URL` 設定
+- [ ] `NEXTAUTH_SECRET` を本番用ランダム値に変更（`openssl rand -base64 32`）
+- [ ] `NEXTAUTH_URL` を本番ドメインに設定
+- [ ] `GOOGLE_CLOUD_VISION_API_KEY` 本番キーを設定
+- [ ] `GOOGLE_MAPS_API_KEY` 本番キーを設定
+- [ ] `prisma migrate deploy`（本番マイグレーション）
+
+#### CARIO 連携
+- [ ] CARIO 接続方式確定（API / CSV / DB直接）
+- [ ] `src/lib/cario/getDrivers.ts` / `getShifts.ts` を実実装に差し替え
+- [ ] 接続先 URL・認証情報を環境変数に設定
+
+#### データ・アカウント
+- [ ] 管理者パスワードを本番用に変更
+- [ ] ドライバーアカウントを実際のドライバーで作成
+- [ ] テスト用 seed データを本番環境に投入しない
+
+#### 品質・動作確認
+- [ ] 美女木拠点の正確な緯度経度を `src/lib/maps/warehouse.ts` に設定
+- [ ] 実際の L1M 配車表で OCR 精度を確認・パーサー調整
+- [ ] Google Maps URL の件数上限（10件超は自動分割済み）を実データで確認
+- [ ] スマホ（iOS/Android）でドライバー画面の表示・操作を確認
+- [ ] 個人情報ログ出力がないかコード全体を確認
+
+### 実データ検証チェックリスト
+
+#### OCR 精度
+- [ ] 実際の L1M 配車表画像（JPEG/PNG）で OCR 実行
+- [ ] 配車No（W1-11-1形式）が正しく読み取れるか
+- [ ] 数量欄（常温/クーラー/ケース/総数）が4項目に分解されるか
+- [ ] 誤読時に「要確認」フラグが立つか
+- [ ] OCR確認画面でインライン編集・保存できるか
+
+#### 住所・地図
+- [ ] 実際の配送先住所で Geocoding が成功するか
+- [ ] 住所エラー行が ADDRESS_ERROR になるか
+- [ ] Google Maps URL が正しいルートを示すか
+- [ ] 11件以上の配送先で URL が分割されるか
+
+#### セキュリティ
+- [ ] ドライバーAでログインしてドライバーBの配送先が見えないか
+- [ ] 他人の delivery_item_id を API に直接送って 403 が返るか
+- [ ] ADMIN で `/driver/today` にアクセスすると `/admin/dashboard` へリダイレクトされるか
+
+---
+
+## 確認済み事項（本番方針確定）
+
+| # | 項目 | 決定内容 | 確認日 |
+|---|---|---|---|
+| 1 | DB（開発） | ローカル Docker PostgreSQL | 2026-06-26 |
+| 2 | DB（本番） | **Neon PostgreSQL** | 2026-06-29 |
+| 3 | 画像ストレージ | **Vercel Blob**（`@vercel/blob` 実装済み） | 2026-06-29 |
+| 4 | OCR | Google Cloud Vision API（要 API キー） | 2026-06-26 |
+| 5 | CARIO連携方式 | **REST API**（未設定時モックフォールバック） | 2026-06-29 |
+| 6 | デプロイ先 | **Vercel** | 2026-06-29 |
+| 7 | 管理者アカウント | `prisma db seed:prod`（PW は環境変数） | 2026-06-29 |
+
+### 情報待ち（本番デプロイ前に必要）
+
+| 項目 | 内容 |
+|---|---|
+| Neon DB URL | Neon プロジェクト作成後に `DATABASE_URL` として設定 |
+| Vercel Blob トークン | Blob ストア作成後に `BLOB_READ_WRITE_TOKEN` として設定 |
+| Google API キー（本番） | Cloud Console で Geocoding / Vision API を有効化 |
+| CARIO API エンドポイント仕様 | API 仕様書受領後に `mapper.ts` のフィールドマッピングを調整 |
+| CARIO API キー | CARIO 側から払い出し後に `CARIO_API_KEY` として設定 |
+| 美女木拠点の正確な座標 | `src/lib/maps/warehouse.ts` の lat/lng/address を更新 |
+| 本番管理者パスワード | `ADMIN_PASSWORD` 環境変数に設定後に `npm run db:seed:prod` |
+
+---
+
+## 環境変数一覧（Vercel 本番設定）
+
+| 変数 | 用途 | 状態 |
+|---|---|---|
+| `DATABASE_URL` | Neon PostgreSQL 接続 URL | ⏳ Neon 作成後 |
+| `NEXTAUTH_SECRET` | JWT 署名（`openssl rand -base64 32`） | ⏳ 生成後設定 |
+| `NEXTAUTH_URL` | アプリ URL（`https://your-app.vercel.app`） | ⏳ デプロイ後 |
+| `GOOGLE_CLOUD_VISION_API_KEY` | OCR 用 | ⏳ API キー発行後 |
+| `GOOGLE_MAPS_API_KEY` | Geocoding 用 | ⏳ API キー発行後 |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob 読み書き | ⏳ Blob ストア作成後 |
+| `CARIO_API_BASE_URL` | CARIO API エンドポイント | ⏳ CARIO 仕様確定後 |
+| `CARIO_API_KEY` | CARIO 認証キー | ⏳ CARIO 払い出し後 |
+| `CARIO_API_SECRET` | CARIO 認証シークレット（任意） | ⏳ CARIO 払い出し後 |
+| `ADMIN_EMAIL` | 本番管理者メール（seed.prod.ts 用） | ⏳ 決定後 |
+| `ADMIN_PASSWORD` | 本番管理者 PW（seed.prod.ts 用） | ⏳ 決定後 |
+
+> `.env.example` にすべてのキーとコメントが記載されています。
+
+---
+
+## 本番デプロイ 実行チェックリスト
+
+> コードは本番デプロイ可能な状態（tsc/lint/build 全 OK 確認済み）。
+> 以下を上から順番に実行してください。
+
+### ① Neon PostgreSQL 作成
+
+```
+[ ] 1. https://neon.tech → New Project
+[ ] 2. Dashboard → Connection Details → Connection string をコピー
+[ ] 3. sslmode=require が含まれているか確認（重要）
+[ ] 4. この値を DATABASE_URL としてメモ
+```
+
+### ② Vercel プロジェクト作成
+
+```
+[ ] 1. https://vercel.com → New Project → GitHub リポジトリを Import
+[ ] 2. Framework: Next.js（自動検出） → Deploy
+[ ] 3. デプロイ後の URL をメモ → NEXTAUTH_URL に使う
+```
+
+### ③ Vercel Blob ストア作成
+
+```
+[ ] 1. Vercel ダッシュボード → Storage → Create → Blob Store
+[ ] 2. BLOB_READ_WRITE_TOKEN をメモ
+```
+
+### ④ Google API キー取得
+
+```
+[ ] 1. https://console.cloud.google.com → APIs & Services → Enable APIs
+[ ] 2. Cloud Vision API を有効化
+[ ] 3. Geocoding API を有効化
+[ ] 4. Credentials → API Key を作成してメモ
+```
+
+### ⑤ Vercel 環境変数設定（Production）
+
+```
+[ ] DATABASE_URL         = postgresql://...（①）
+[ ] NEXTAUTH_SECRET      = openssl rand -base64 32 の出力
+[ ] NEXTAUTH_URL         = https://your-app.vercel.app（②）
+[ ] GOOGLE_CLOUD_VISION_API_KEY = （④）
+[ ] GOOGLE_MAPS_API_KEY         = （④）
+[ ] BLOB_READ_WRITE_TOKEN       = （③）
+[ ] ADMIN_EMAIL          = admin@your-domain.com
+[ ] ADMIN_PASSWORD       = （本番パスワード）
+[ ] CARIO_API_BASE_URL   = （未確定はスキップ可）
+[ ] CARIO_API_KEY        = （未確定はスキップ可）
+[ ] CARIO_API_SECRET     = （未確定はスキップ可）
+```
+
+### ⑥ 本番 DB マイグレーション
+
+```bash
+DATABASE_URL="postgresql://..." npx prisma migrate deploy
+# → "All migrations have been applied." が出ればOK
+```
+
+### ⑦ 本番管理者 seed 実行
+
+```bash
+ADMIN_EMAIL="admin@..." \
+ADMIN_PASSWORD="..." \
+DATABASE_URL="postgresql://..." \
+npm run db:seed:prod
+# → "✅ 本番管理者アカウント作成: ..." が出ればOK
+```
+
+### ⑧ 本番再デプロイ
+
+```
+[ ] Vercel ダッシュボード → Redeploy（環境変数を反映させる）
+```
+
+### ⑨ 本番 URL 動作確認
+
+```
+[ ] /login                  → ログイン画面が表示される
+[ ] /admin/dashboard        → 集計カードが表示される
+[ ] /admin/dispatch-images  → 画像アップロード → Vercel Blob に保存される
+[ ] /admin/shifts           → CARIOシフト取込（CARIO未設定→モックで動作）
+[ ] /admin/assignments      → 割当画面が表示される
+[ ] /admin/routes           → ルート作成画面が表示される
+[ ] /admin/progress         → 進捗画面が表示される
+[ ] /driver/today           → ドライバーの配送先が表示される
+```
+
+### ⑩ 権限確認
+
+```
+[ ] 未認証 → /admin/* → /login にリダイレクト
+[ ] DRIVER → /admin/* → /driver/today にリダイレクト
+[ ] ADMIN → /driver/today → /admin/dashboard にリダイレクト
+```
+
+---
+
+## 変更履歴
+
+| 日付 | ステップ | 内容 |
+|---|---|---|
+| 2026-06-26 | — | 初版作成・実装計画確定 |
+| 2026-06-26 | STEP 1 | 基盤構築完了（create-next-app / Prisma 7 / NextAuth.js v5 / middleware / レイアウト） |
+| 2026-06-26 | STEP 2 | 配車表画像取込完了（storage 抽象化 / アップロードAPI / 取込履歴UI） |
+| 2026-06-26 | STEP 3 | OCR処理完了（Cloud Vision API / 配車No分解 / 要確認フラグ / OCR実行ボタン） |
+| 2026-06-26 | STEP 4 | OCR確認画面完了（インライン編集 / 再バリデーション / 確定機能 / 監査ログ） |
+| 2026-06-27 | STEP 5 | CARIOシフト取込完了（upsert / サマリー表示 / schema変更）※後に REST API client/mapper 実装 |
+| 2026-06-27 | STEP 6 | 割当機能完了（半自動割当 / 手動修正 / 確定機能 / Assignment @unique 追加） |
+| 2026-06-29 | STEP 7 | ルート作成完了（Geocoding / 最近隣法 / Google Maps URL / 積み込みモード切替） |
+| 2026-06-29 | STEP 8 | ドライバー画面完了（スマホ優先カードUI / 本人確認 / ステータス更新 / 備考入力） |
+| 2026-06-29 | STEP 9 | 管理者進捗画面完了（ダッシュボード集計 / ドライバー別進捗 / 詳細展開）**MVP 完成** |
+| 2026-06-29 | 品質確認 | ESLint エラー修正・seed.ts にDRIVERアカウント追加・ビルド成功確認・README 整備 |
+| 2026-06-29 | 本番化準備① | 作業計画・モック差し替え箇所・デプロイ先比較・本番NG項目・実データ検証チェックリスト策定 |
+| 2026-06-29 | 本番化準備② | seed分離(dev/prod)・Vercel Blob/S3 Provider実装案・.env.example整備・README本番化手順追記 |
+| 2026-06-29 | 本番化実装 | Vercel Blob本実装・CARIO API client/mapper作成・ENV分岐フォールバック・.env.example確定・README更新 |
+| 2026-06-29 | デプロイ準備 | 最終確認（tsc/lint/build 全 OK）・デプロイ手順確定・CARIO仕様待ち項目整理・動作確認シナリオ作成 |
+| 2026-06-29 | デプロイ実行 | 実行チェックリスト作成（①Neon→②Vercel→③Blob→④Google API→⑤ENV→⑥migrate→⑦seed→⑧再デプロイ→⑨確認）|
+| 2026-06-29 | 自動化整理 | DEPLOY.md 作成・作業分担（人間 vs Claude Code）・Vercel CLI コマンド一覧・typecheck/lint/build 全 OK |
