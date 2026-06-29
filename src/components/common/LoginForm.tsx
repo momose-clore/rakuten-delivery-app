@@ -30,10 +30,8 @@ export function LoginForm() {
       return;
     }
 
-    // ロール別リダイレクトは middleware が担当するが、
-    // signIn 後に現在のセッションを確認してリダイレクト
-    router.refresh();
-    router.push("/");
+    // フルリロードでセッションクッキーを確実に反映させる
+    window.location.href = "/";
   }
 
   return (
