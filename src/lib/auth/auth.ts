@@ -55,5 +55,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       session.user.driverId = (token.driverId as string | null) ?? null;
       return session;
     },
+    authorized({ auth: session, request: { nextUrl } }) {
+      const isLoggedIn = !!session;
+      const role = session?.user?.role;
+      const isAdminPath = nextUrl.pathname.startsWith("/admin");
+      const isDriverPath = nextUrl.pathname.startsWith("/driver");
+      const isLoginPage = nextUrl.pathname === "/login";
+
+      if (!isLoggedIn && (isAdminPath || isDriverPath)) return false;
+      if (isLoggedIn && role === "DRIVER" && isAdminPath)
+        return Response.redirect(new URL("/driver/today", nextUrl));
+      if (isLoggedIn && role === "ADMIN" && isDriverPath)
+        return Response.redirect(new URL("/admin/dashboard", nextUrl));
+      if (isLoggedIn && isLoginPage)
+        return Response.redirect(new URL(role === "ADMIN" ? "/admin/dashboard" : "/driver/today", nextUrl));
+
+      return true;
+    },
   },
 });
