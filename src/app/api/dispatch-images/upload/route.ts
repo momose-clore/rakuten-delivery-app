@@ -27,15 +27,9 @@ export async function POST(req: NextRequest) {
   }
 
   const file = formData.get("file") as File | null;
-  const deliveryDate = formData.get("deliveryDate") as string | null;
-  const area = (formData.get("area") as string | null) ?? "";
-  const waveNo = (formData.get("waveNo") as string | null) ?? "";
 
   if (!file) {
     return NextResponse.json({ error: "ファイルが選択されていません" }, { status: 400 });
-  }
-  if (!deliveryDate) {
-    return NextResponse.json({ error: "配送日を入力してください" }, { status: 400 });
   }
 
   const ext = getExtension(file.name);
@@ -54,10 +48,12 @@ export async function POST(req: NextRequest) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  // 配送日・エリア・W番号は OCR で自動抽出するため暫定値を使用
+  const now = new Date();
   const filename = generateDispatchImageFilename(
-    deliveryDate,
-    area || "不明",
-    waveNo || "不明",
+    now.toISOString().split("T")[0],
+    "auto",
+    "auto",
     ext
   );
 
@@ -65,15 +61,14 @@ export async function POST(req: NextRequest) {
 
   const record = await prisma.dispatchImage.create({
     data: {
-      deliveryDate: new Date(deliveryDate),
-      area: area || null,
-      waveNo: waveNo || null,
+      deliveryDate: now, // OCR 後に更新される
+      area: null,        // OCR 後に更新される
+      waveNo: null,      // OCR 後に更新される
       imageUrl: url,
       ocrStatus: "PENDING",
     },
   });
 
-  // ストレージパスを audit_logs に記録
   await prisma.auditLog.create({
     data: {
       userId: session.user.id,

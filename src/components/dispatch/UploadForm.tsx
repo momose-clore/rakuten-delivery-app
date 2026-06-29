@@ -11,9 +11,6 @@ interface UploadFormProps {
 export function UploadForm({ onSuccess }: UploadFormProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [deliveryDate, setDeliveryDate] = useState("");
-  const [area, setArea] = useState("");
-  const [waveNo, setWaveNo] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,8 +43,8 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!file || !deliveryDate) {
-      setError("配送日とファイルは必須です");
+    if (!file) {
+      setError("画像ファイルを選択してください");
       return;
     }
 
@@ -56,9 +53,7 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
 
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("deliveryDate", deliveryDate);
-    formData.append("area", area);
-    formData.append("waveNo", waveNo);
+    // 配送日・エリア・W番号は OCR で自動抽出するため送信不要
 
     const res = await fetch("/api/dispatch-images/upload", {
       method: "POST",
@@ -74,50 +69,17 @@ export function UploadForm({ onSuccess }: UploadFormProps) {
     }
 
     handleClear();
-    setDeliveryDate("");
-    setArea("");
-    setWaveNo("");
     onSuccess();
   }
 
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-lg border border-gray-200 p-6 space-y-5">
-      <h2 className="text-base font-semibold text-gray-900">画像アップロード</h2>
-
-      {/* 配送情報 */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            配送日 <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="date"
-            value={deliveryDate}
-            onChange={(e) => setDeliveryDate(e.target.value)}
-            required
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">エリア</label>
-          <input
-            type="text"
-            value={area}
-            onChange={(e) => setArea(e.target.value)}
-            placeholder="例：東京、埼玉"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">W番号</label>
-          <input
-            type="text"
-            value={waveNo}
-            onChange={(e) => setWaveNo(e.target.value)}
-            placeholder="例：W1、W2"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+      <div>
+        <h2 className="text-base font-semibold text-gray-900">画像アップロード</h2>
+        <p className="text-xs text-gray-500 mt-1">
+          配車表の画像を選択してアップロードしてください。
+          配送日・エリア・W番号は OCR 実行時に自動で読み取ります。
+        </p>
       </div>
 
       {/* ファイル選択 */}

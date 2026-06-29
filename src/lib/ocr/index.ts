@@ -32,16 +32,29 @@ export async function runOcr(
     // 4. Cloud Vision API でテキスト抽出
     const rawText = await extractTextFromImage(buffer);
 
-    // 5. テキストをパース
+    // 5. ヘッダー情報（配送日・エリア・W番号）を抽出して dispatch_images を更新
+    const header = extractHeaderInfo(rawText);
+    if (header.deliveryDate || header.area || header.waveNo) {
+      await prisma.dispatchImage.update({
+        where: { id: dispatchImageId },
+        data: {
+          ...(header.deliveryDate && { deliveryDate: header.deliveryDate }),
+          ...(header.area && { area: header.area }),
+          ...(header.waveNo && { waveNo: header.waveNo }),
+        },
+      });
+    }
+
+    // 6. テキストをパース（配送明細）
     const parsed = parseDispatchText(rawText);
 
-    // 6. バリデーション（要確認フラグ付与）
+    // 7. バリデーション（要確認フラグ付与）
     const validated = parsed.map((item) => ({
       ...item,
       reviewReasons: validateItem(item, parsed),
     }));
 
-    // 7. delivery_items に一括 INSERT
+    // 8. delivery_items に一括 INSERT
     let reviewCount = 0;
     for (const item of validated) {
       const hasReview = item.reviewReasons.length > 0;
@@ -73,14 +86,14 @@ export async function runOcr(
       });
     }
 
-    // 8. dispatch_images ステータスを更新
+    // 9. dispatch_images ステータスを更新
     //    OCR完了 = REVIEW_REQUIRED（STEP4で管理者確認後に CONFIRMED）
     await prisma.dispatchImage.update({
       where: { id: dispatchImageId },
       data: { ocrStatus: "REVIEW_REQUIRED" },
     });
 
-    // 9. 操作ログ（個人情報は含めない）
+    // 10. 操作ログ（個人情報は含めない）
     await prisma.auditLog.create({
       data: {
         userId,
@@ -121,4 +134,34 @@ export async function runOcr(
 
     throw err;
   }
+}
+
+/**
+ * OCR テキストから配車表のヘッダー情報（配送日・エリア・W番号）を抽出する。
+ * L1M配車表の左下に記載されている情報を読み取る。
+ */
+function extractHeaderInfo(rawText: string): {
+  deliveryDate: Date | null;
+  area: string | null;
+  waveNo: string | null;
+} {
+  // 配送日: YYYY/MM/DD または YYYY年MM月DD日 形式
+  const dateMatch = rawText.match(/(\d{4})[\/年](\d{1,2})[\/月](\d{1,2})/);
+  let deliveryDate: Date | null = null;
+  if (dateMatch) {
+    const d = new Date(`${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}`);
+    if (!isNaN(d.getTime())) deliveryDate = d;
+  }
+
+  // W番号: W1〜W6
+  const waveMatch = rawText.match(/\b(W[1-6])\b/i);
+  const waveNo = waveMatch ? waveMatch[1].toUpperCase() : null;
+
+  // エリア: 配車表左下の地名（「美女木」「東京」など）
+  // バーコード番号の上に記載されることが多い
+  const areaMatch = rawText.match(/([^\s\d]{2,8})\s+W[1-6]/i)
+    ?? rawText.match(/(?:拠点|エリア|地区)[：:\s]*([^\s\d]{2,8})/);
+  const area = areaMatch ? areaMatch[1].trim() : null;
+
+  return { deliveryDate, area, waveNo };
 }
