@@ -275,3 +275,37 @@ model OcrCorrectionPattern {
   @@unique([fieldName, beforeValue])
   @@map("ocr_correction_patterns")
 }
+
+// ─────────────────────────────────────────────
+// OCR正解セット評価
+// ─────────────────────────────────────────────
+
+model OcrGroundTruthSet {
+  id              String   @id @default(cuid())
+  name            String
+  dispatchImageId String   @map("dispatch_image_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  items OcrGroundTruthItem[]
+
+  @@map("ocr_ground_truth_sets")
+}
+
+model OcrGroundTruthItem {
+  id                String  @id @default(cuid())
+  setId             String  @map("set_id")
+  rowNo             Int     @map("row_no")
+  dispatchKey       String? @map("dispatch_key")
+  invoiceNo         String? @map("invoice_no")
+  customerName      String? @map("customer_name")
+  customerPhone     String? @map("customer_phone")
+  address           String?
+  normalOriconCount Int?    @map("normal_oricon_count")
+  coolerBoxCount    Int?    @map("cooler_box_count")
+  caseCount         Int?    @map("case_count")
+  totalCount        Int?    @map("total_count")
+
+  set OcrGroundTruthSet @relation(fields: [setId], references: [id])
+
+  @@map("ocr_ground_truth_items")
+}

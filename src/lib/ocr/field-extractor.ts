@@ -1,13 +1,12 @@
 import type { MappedRow } from "./layout-mapper";
 import type { ParsedDeliveryItem } from "./types";
-import {
-  normalizeDispatchKey,
-  normalizeInvoiceNo,
-  normalizePhone,
-  normalizeAddress,
-  normalizeCount,
-  normalizeName,
-} from "./normalizer";
+import { extractDispatchKey, parseDispatchKeyParts } from "./extractors/dispatch-key";
+import { extractInvoiceNo, extractInvoiceFromText } from "./extractors/invoice";
+import { extractPhone, extractPhoneFromText } from "./extractors/phone";
+import { extractAddress } from "./extractors/address";
+import { extractCounts } from "./extractors/counts";
+import { extractName } from "./extractors/name";
+import type { ReviewReason } from "./types";
 
 export function extractItemFromRow(
   row: MappedRow,
@@ -16,40 +15,44 @@ export function extractItemFromRow(
   const get = (field: keyof MappedRow["cells"]) =>
     (row.cells[field] ?? []).join(" ").trim();
 
-  const dispatchKeyRaw = get("dispatchKey");
-  const dispatchKey = normalizeDispatchKey(dispatchKeyRaw, defaultWaveNo);
+  // 配車No
+  const dispatchKey = extractDispatchKey(get("dispatchKey"), defaultWaveNo);
 
-  // 伝票No（住所欄・氏名欄に混入している場合も抽出）
-  const invoiceRaw = get("invoiceNo")
-    || extractInvoiceFromMixedText(get("address"))
-    || extractInvoiceFromMixedText(get("customerName"));
-  const invoiceNo = normalizeInvoiceNo(invoiceRaw);
+  // 伝票No（住所・氏名欄からも抽出）
+  const invoiceNo = extractInvoiceNo(get("invoiceNo"))
+    ?? extractInvoiceFromText(get("address"))
+    ?? extractInvoiceFromText(get("customerName"));
 
-  // 電話番号（住所欄からも抽出試み）
-  const phoneRaw = get("customerPhone") || extractPhoneFromText(get("address"));
-  const { value: customerPhone, valid: phoneValid } = normalizePhone(phoneRaw);
+  // 電話番号
+  const { value: customerPhone, valid: phoneValid } = extractPhone(
+    get("customerPhone") || extractPhoneFromText(get("address"))
+  );
 
-  // 住所（強化版: ADDRESS_SUSPECT 判定付き）
-  const addressRaw = get("address");
-  const { value: address, suspect: addressSuspect } = normalizeAddress(addressRaw);
+  // 住所
+  const { value: address, suspect: addressSuspect, autoCorrected: addressAutoCorrected } =
+    extractAddress(get("address"));
 
   // 氏名
-  const nameRaw = get("customerName");
-  const customerName = normalizeName(nameRaw);
+  const customerName = extractName(get("customerName"));
 
-  // 数量（数量列にある数字のみ）
-  const normalOriconCount = normalizeCount(get("normalOricon"), true);
-  const coolerBoxCount    = normalizeCount(get("coolerBox"), true);
-  const caseCount         = normalizeCount(get("caseCount"), true);
-  const totalCount        = normalizeCount(get("totalCount"), true);
+  // 数量（専用抽出器）
+  const { normalOricon, coolerBox, caseCount, totalCount, totalAutoFilled } = extractCounts(
+    get("normalOricon"),
+    get("coolerBox"),
+    get("caseCount"),
+    get("totalCount")
+  );
 
   const specialFlag = get("specialFlag") || null;
-  const memo        = get("memo") || null;
+  const memo = get("memo") || null;
 
   const keyParts = dispatchKey ? parseDispatchKeyParts(dispatchKey) : null;
 
-  // ADDRESS_SUSPECT を reviewReasons の初期値として渡す
-  const initialReasons = addressSuspect && address ? ["ADDRESS_SUSPECT" as const] : [];
+  // 初期 reviewReasons
+  const reasons: ReviewReason[] = [];
+  if (addressSuspect && address) reasons.push("ADDRESS_SUSPECT");
+  if (addressAutoCorrected) reasons.push("AUTO_CORRECTED_BY_HISTORY");
+  if (totalAutoFilled) reasons.push("AUTO_CORRECTED_BY_HISTORY");
 
   return {
     dispatchKey,
@@ -61,31 +64,11 @@ export function extractItemFromRow(
     customerPhone: phoneValid ? customerPhone : null,
     address,
     specialFlag,
-    normalOriconCount,
-    coolerBoxCount,
+    normalOriconCount: normalOricon,
+    coolerBoxCount: coolerBox,
     caseCount,
     totalCount,
     memo,
-    reviewReasons: initialReasons,
+    reviewReasons: reasons,
   };
-}
-
-function parseDispatchKeyParts(key: string) {
-  const m = key.match(/^(?:(W[1-6])-)?(\d+)-(\d+)$/i);
-  if (!m) return null;
-  return {
-    waveNo: m[1] ? m[1].toUpperCase() : null,
-    vehicleNo: m[2],
-    deliverySeq: parseInt(m[3], 10),
-  };
-}
-
-function extractInvoiceFromMixedText(text: string): string {
-  const m = text.replace(/[\s\-]/g, "").match(/\d{10,14}/);
-  return m ? m[0] : "";
-}
-
-function extractPhoneFromText(text: string): string {
-  const m = text.match(/0\d[\d\s\-]{8,11}/);
-  return m ? m[0] : "";
 }

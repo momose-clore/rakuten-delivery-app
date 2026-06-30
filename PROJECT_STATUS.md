@@ -1,7 +1,7 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-06-30（L1M専用OCRエンジン実装完了・Neon migrate 完了）
+> 最終更新: 2026-06-30（OCR精度向上エンジン v2・表領域検出・ヘッダーアンカー・修正履歴学習）
 
 ---
 
@@ -119,7 +119,7 @@ low でも Gemini/AI には**送らない**。`ocr_notes` に保存して OCR確
 |---|---|
 | 本番 URL | https://rakuten-delivery-app.vercel.app |
 | GitHub | https://github.com/momose-clore/rakuten-delivery-app（Private） |
-| ログイン | ✅ admin@delivery-app.local / lwWhppwIIizz3HysYSmR |
+| ログイン | ✅ admin@delivery-app.local / ******** |
 | Neon DB | ✅ migrate 適用済み |
 | Vercel Blob | ✅ public ストア |
 | OCR.space | ✅ デモキー動作確認済み |
@@ -299,14 +299,14 @@ docker compose up -d
 npm run db:migrate        # migration name: "init"
 
 # 3. 管理者アカウント作成
-npm run db:seed           # admin@delivery-app.local / admin1234
+npm run db:seed           # admin@delivery-app.local / ********
 
 # 4. 開発サーバー起動
 npm run dev
 
 # 5. ブラウザ確認
 # http://localhost:3000 → /login
-# admin@delivery-app.local / admin1234 でログイン
+# admin@delivery-app.local / ******** でログイン
 # → /admin/dashboard に遷移すれば完了
 ```
 
@@ -1198,4 +1198,6 @@ npm run db:seed:prod
 | 2026-06-30 | OCR 改善② | OCR.space 導入（タイムアウト問題解消）・10-1 形式配車No対応 |
 | 2026-06-30 | ⚠️→✅ OCR精度改善 | L1M専用OCRエンジン実装（座標ベース列マッピング・AI fallbackなし）|
 | 2026-06-30 | OCR エンジン実装 | ocrspace.ts/table-template/layout-mapper/field-extractor/normalizer/confidence/hash/usage 全9ファイル |
+| 2026-06-30 | OCR v2 精度向上 | 表領域検出・ヘッダーアンカー列補正・動的tolerance・住所折り返し結合・ADDRESS_SUSPECT・修正履歴学習 |
+| 2026-06-30 | DB migrate | ocr_correction_patterns テーブル追加（Neon 適用済み） |
 | 2026-06-30 | DB migrate | imageHash/ocrProvider/reOcrCount/ocr_usage_logs を Neon に適用完了 |
