@@ -52,7 +52,7 @@ cp .env.example .env.local
 | `DATABASE_URL` | PostgreSQL 接続 URL |
 | `NEXTAUTH_SECRET` | JWT 署名用シークレット（32文字以上推奨） |
 | `NEXTAUTH_URL` | アプリの URL（例: http://localhost:3000） |
-| `OCR_SPACE_API_KEY` | **本番必須**（未設定で OCR 不可）・開発はデモキー可 |
+| `OCR_SPACE_API_KEY` | **⚠️ 本番必須**（未設定で OCR 実行不可・デモキー fallback 禁止）/ 開発はデモキー可 |
 | `GOOGLE_MAPS_API_KEY` | 住所 Geocoding 用（STEP 7 以降必須） |
 
 NEXTAUTH_SECRET の生成例：
