@@ -1,7 +1,7 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-06-30（OCR精度向上エンジン v2・表領域検出・ヘッダーアンカー・修正履歴学習）
+> 最終更新: 2026-06-30（OCR精度向上エンジン v3・品質スコア・専用抽出器・誤読辞書・評価機能）
 
 ---
 
@@ -1199,5 +1199,7 @@ npm run db:seed:prod
 | 2026-06-30 | ⚠️→✅ OCR精度改善 | L1M専用OCRエンジン実装（座標ベース列マッピング・AI fallbackなし）|
 | 2026-06-30 | OCR エンジン実装 | ocrspace.ts/table-template/layout-mapper/field-extractor/normalizer/confidence/hash/usage 全9ファイル |
 | 2026-06-30 | OCR v2 精度向上 | 表領域検出・ヘッダーアンカー列補正・動的tolerance・住所折り返し結合・ADDRESS_SUSPECT・修正履歴学習 |
+| 2026-06-30 | OCR v3 精度向上 | 品質スコア・誤読辞書・グリッド検出・列専用抽出器・正解セット評価・セキュリティ修正 |
+| 2026-06-30 | DB migrate | ocr_ground_truth_sets/items テーブル追加（Neon 適用済み） |
 | 2026-06-30 | DB migrate | ocr_correction_patterns テーブル追加（Neon 適用済み） |
 | 2026-06-30 | DB migrate | imageHash/ocrProvider/reOcrCount/ocr_usage_logs を Neon に適用完了 |

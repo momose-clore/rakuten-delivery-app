@@ -1,0 +1,194 @@
+"use client";
+
+import { useState, useRef } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+
+type Step = "guide" | "capture" | "quality" | "processing" | "done";
+type CaptureMode = "screen" | "paper";
+
+const GUIDE_MESSAGES = [
+  "配送表の四隅がすべて入るように撮影してください",
+  "斜めからではなく、できるだけ正面から撮影してください",
+  "文字が読める距離まで近づいてください",
+  "影や反射が入らない場所で撮影してください",
+  "手ブレしないように固定して撮影してください",
+];
+
+export function MobileCameraImportPage() {
+  const [step, setStep] = useState<Step>("guide");
+  const [captureMode, setCaptureMode] = useState<CaptureMode>("paper");
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [quality, setQuality] = useState<{ level: string; score: number; warnings: string[]; blockingReasons: string[]; canProceedToOcr: boolean } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setPreviewUrl(URL.createObjectURL(file));
+    setStep("quality");
+    setLoading(true);
+    setError("");
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("captureMode", captureMode);
+
+    const res = await fetch("/api/admin/dispatch-import/camera/upload", { method: "POST", body: formData });
+    setLoading(false);
+
+    if (!res.ok) {
+      setError("アップロードに失敗しました");
+      setStep("capture");
+      return;
+    }
+
+    const body = await res.json();
+    setImageUrl(body.imageUrl);
+    setQuality(body.quality);
+  }
+
+  async function handleProcess() {
+    if (!imageUrl) return;
+    setStep("processing");
+    setLoading(true);
+    setError("");
+
+    const res = await fetch("/api/admin/dispatch-import/camera/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageUrl, captureMode }),
+    });
+    setLoading(false);
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error ?? "OCR処理に失敗しました");
+      setStep("quality");
+      return;
+    }
+
+    const body = await res.json();
+    setBatchId(body.batchId);
+    setStep("done");
+  }
+
+  if (step === "guide") {
+    return (
+      <div className="max-w-md mx-auto space-y-5 px-4 py-6">
+        <h1 className="text-xl font-bold text-gray-900">スマホカメラOCR</h1>
+
+        <div className="flex gap-2">
+          {(["paper", "screen"] as CaptureMode[]).map((mode) => (
+            <button key={mode} onClick={() => setCaptureMode(mode)}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium border ${captureMode === mode ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300"}`}>
+              {mode === "paper" ? "📄 紙" : "🖥️ 画面"}
+            </button>
+          ))}
+        </div>
+
+        <div className="bg-blue-50 rounded-xl p-4 space-y-2">
+          <p className="text-sm font-semibold text-blue-800">撮影ガイド</p>
+          {GUIDE_MESSAGES.map((msg, i) => (
+            <p key={i} className="text-sm text-blue-700">• {msg}</p>
+          ))}
+        </div>
+
+        <Button onClick={() => setStep("capture")} className="w-full py-4 text-base">
+          撮影を開始する
+        </Button>
+      </div>
+    );
+  }
+
+  if (step === "capture") {
+    return (
+      <div className="max-w-md mx-auto space-y-5 px-4 py-6">
+        <h1 className="text-xl font-bold text-gray-900">配送表を撮影してください</h1>
+        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>}
+
+        <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+          onChange={handleFileSelect} className="hidden" />
+
+        <button onClick={() => fileInputRef.current?.click()}
+          className="w-full py-6 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-lg font-bold">
+          📷 カメラで撮影
+        </button>
+
+        <input type="file" accept="image/*" onChange={handleFileSelect}
+          className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-gray-100" />
+
+        <button onClick={() => setStep("guide")} className="w-full text-sm text-gray-500 underline">
+          ← 戻る
+        </button>
+      </div>
+    );
+  }
+
+  if (step === "quality") {
+    return (
+      <div className="max-w-md mx-auto space-y-4 px-4 py-6">
+        <h1 className="text-xl font-bold text-gray-900">品質確認</h1>
+
+        {previewUrl && (
+          <div className="rounded-xl overflow-hidden border border-gray-200">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={previewUrl} alt="プレビュー" className="w-full object-contain max-h-64 bg-gray-50" />
+          </div>
+        )}
+
+        {loading && <p className="text-sm text-gray-500">品質を確認中...</p>}
+
+        {quality && (
+          <div className={`rounded-xl p-4 ${
+            quality.level === "excellent" || quality.level === "good" ? "bg-green-50" :
+            quality.level === "warning" ? "bg-yellow-50" : "bg-red-50"
+          }`}>
+            <p className="font-semibold text-sm">品質スコア: {quality.score}/100（{quality.level}）</p>
+            {quality.warnings.map((w, i) => <p key={i} className="text-xs text-gray-600 mt-1">• {w}</p>)}
+            {quality.blockingReasons.map((r, i) => <p key={i} className="text-xs text-red-700 mt-1 font-medium">⚠️ {r}</p>)}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button onClick={() => { setStep("capture"); setPreviewUrl(null); }}
+            className="flex-1 py-3 rounded-xl border border-gray-300 text-gray-700 font-medium">
+            再撮影
+          </button>
+          {quality?.canProceedToOcr && (
+            <Button onClick={handleProcess} className="flex-1 py-3">
+              OCR実行
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "processing") {
+    return (
+      <div className="max-w-md mx-auto space-y-4 px-4 py-12 text-center">
+        <p className="text-2xl">⏳</p>
+        <p className="text-lg font-semibold text-gray-900">OCR処理中...</p>
+        <p className="text-sm text-gray-500">しばらくお待ちください（20〜40秒）</p>
+        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-md mx-auto space-y-4 px-4 py-12 text-center">
+      <p className="text-3xl">✅</p>
+      <p className="text-xl font-bold text-gray-900">取込完了</p>
+      <p className="text-sm text-gray-500">OCR確認画面で内容を確認してください</p>
+      <Link href="/admin/ocr-review" className="block w-full py-3 bg-blue-600 text-white rounded-xl font-medium">
+        確認画面へ →
+      </Link>
+    </div>
+  );
+}
