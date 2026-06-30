@@ -1,7 +1,7 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-06-30（v5実態整合完了・OCR_SPACE_API_KEY本番必須化・取込確認画面拡張）
+> 最終更新: 2026-06-30（GODOOR不使用方針・住所補正DB・Google Maps方針・本番前チェックリスト更新完了）
 
 ---
 
@@ -1343,6 +1343,7 @@ npm run db:seed:prod
 | 2026-06-30 | 取込エンジン v5 | PDF/CSV/Excel/貼付/画像OCR/スマホカメラOCR 統合・L1M専用プロファイル・自動救済・取込センターUI |
 | 2026-06-30 | ドキュメント整合 | Cloud Vision 記述削除・低信頼行の自動救済方針に修正・パスワードマスク・CLAUDE.md 更新 |
 | 2026-06-30 | v5実態整合 | PDF API追加・camera/quality-check追加・OCR_SPACE_API_KEY本番必須化・取込確認画面名称変更・l1mDebugJsonUrl追加 |
+| 2026-06-30 | 方針整合 | GODOOR不使用・住所補正DB（delivery_location_overrides）・Google Maps方針・個人情報方針・OCR_SPACE_API_KEY本番必須・ドキュメント整合 |
 | 2026-06-30 | DB migrate | dispatch_import_batches/rows テーブル追加（Neon 適用済み） |
 | 2026-06-30 | DB migrate | ocr_ground_truth_sets/items テーブル追加（Neon 適用済み） |
 | 2026-06-30 | DB migrate | ocr_correction_patterns テーブル追加（Neon 適用済み） |
