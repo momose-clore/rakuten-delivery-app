@@ -4,7 +4,8 @@ const nextConfig: NextConfig = {
   images: {
     // ローカル /uploads/ の画像を最適化なしで配信
     // Vercel Blob / S3 に切り替える際はここにドメインを追加する
-    unoptimized: process.env.NODE_ENV === "development",
+    // Vercel Blob URL を含む外部画像を許可
+    unoptimized: true,
   },
 };
 

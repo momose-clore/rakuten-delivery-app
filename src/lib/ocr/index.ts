@@ -45,8 +45,8 @@ export async function runOcr(
       });
     }
 
-    // 6. テキストをパース（配送明細）
-    const parsed = parseDispatchText(rawText);
+    // 6. テキストをパース（配送明細）- ヘッダーの W番号を補完として渡す
+    const parsed = parseDispatchText(rawText, header.waveNo);
 
     // 7. バリデーション（要確認フラグ付与）
     const validated = parsed.map((item) => ({
