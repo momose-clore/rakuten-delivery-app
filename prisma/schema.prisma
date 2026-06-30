@@ -99,14 +99,38 @@ model DispatchImage {
   area         String?
   waveNo       String?   @map("wave_no")
   imageUrl     String    @map("image_url")
+  imageHash    String?   @map("image_hash")
   ocrStatus    OcrStatus @default(PENDING) @map("ocr_status")
+  ocrProvider  String?   @map("ocr_provider")
+  reOcrCount   Int       @default(0) @map("re_ocr_count")
   importedAt   DateTime  @default(now()) @map("imported_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   deliveryItems DeliveryItem[]
+  ocrUsageLogs  OcrUsageLog[]
 
   @@map("dispatch_images")
+}
+
+// ─────────────────────────────────────────────
+// OCR使用ログ
+// ─────────────────────────────────────────────
+
+model OcrUsageLog {
+  id              String   @id @default(cuid())
+  provider        String   // "ocrspace"
+  dispatchImageId String?  @map("dispatch_image_id")
+  imageHash       String?  @map("image_hash")
+  status          String   // "success" | "error" | "skipped" | "reocr"
+  confidence      String?  // "high" | "medium" | "low"
+  itemCount       Int?     @map("item_count")
+  errorMessage    String?  @map("error_message")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  dispatchImage DispatchImage? @relation(fields: [dispatchImageId], references: [id])
+
+  @@map("ocr_usage_logs")
 }
 
 // ─────────────────────────────────────────────

@@ -1,69 +1,77 @@
+/**
+ * OCR オーケストレーター
+ * OCRプロバイダー: OCR.space のみ
+ * AI/Gemini fallback: なし
+ */
 import { prisma } from "@/lib/prisma";
 import { storageProvider } from "@/lib/storage";
-import { extractTextFromImage } from "./vision";
-import { parseDispatchText } from "./parser";
-import { validateItem } from "./validator";
-import { preprocessImageForOcr } from "./preprocess";
+import { runOcrSpace } from "./ocrspace";
+import { preprocessImageForOcr } from "./image-preprocess";
+import { mapWordsToRows, filterDataRows } from "./layout-mapper";
+import { extractItemFromRow } from "./field-extractor";
+import { assessConfidence } from "./confidence";
+import { computeImageHash } from "./hash";
+import { logOcrUsage, checkDailyLimit } from "./usage";
 import type { OcrRunResult } from "./types";
 
-/**
- * 指定した dispatch_images の OCR を実行する。
- * 個人情報（氏名・電話・住所）はログに出力しない。
- */
+export interface OcrRunOptions { forceReOcr?: boolean; }
+
 export async function runOcr(
   dispatchImageId: string,
-  userId: string
+  userId: string,
+  options: OcrRunOptions = {}
 ): Promise<OcrRunResult> {
-  // 1. 画像レコード取得
-  const image = await prisma.dispatchImage.findUnique({
-    where: { id: dispatchImageId },
-  });
-  if (!image) throw new Error(`dispatch_images が見つかりません: ${dispatchImageId}`);
+  const image = await prisma.dispatchImage.findUnique({ where: { id: dispatchImageId } });
+  if (!image) throw new Error(`dispatch_images not found: ${dispatchImageId}`);
 
-  // 2. 処理中ステータスに更新
-  await prisma.dispatchImage.update({
-    where: { id: dispatchImageId },
-    data: { ocrStatus: "PROCESSING" },
-  });
+  const limitCheck = await checkDailyLimit();
+  if (!limitCheck.ok) {
+    throw new Error(`OCR.space 日次上限（${limitCheck.limit}回）到達。本日: ${limitCheck.used}回`);
+  }
+
+  await prisma.dispatchImage.update({ where: { id: dispatchImageId }, data: { ocrStatus: "PROCESSING" } });
 
   try {
-    // 3. 画像バッファ取得（storage 抽象化を経由）
     const rawBuffer = await storageProvider.read(image.imageUrl);
-
-    // 4. 画像前処理（鮮明化・拡大・コントラスト強化）
     const buffer = await preprocessImageForOcr(rawBuffer);
+    const imageHash = computeImageHash(rawBuffer);
 
-    // 5. OCR でテキスト抽出
-    const rawText = await extractTextFromImage(buffer);
-
-    // 6. ヘッダー情報（配送日・エリア・W番号）を抽出して dispatch_images を更新
-    const header = extractHeaderInfo(rawText);
-    if (header.deliveryDate || header.area || header.waveNo) {
-      await prisma.dispatchImage.update({
-        where: { id: dispatchImageId },
-        data: {
-          ...(header.deliveryDate && { deliveryDate: header.deliveryDate }),
-          ...(header.area && { area: header.area }),
-          ...(header.waveNo && { waveNo: header.waveNo }),
-        },
-      });
+    // 重複チェック
+    if (!options.forceReOcr && image.imageHash === imageHash) {
+      const existing = await prisma.deliveryItem.count({ where: { dispatchImageId } });
+      if (existing > 0) {
+        await logOcrUsage({ dispatchImageId, imageHash, status: "skipped" });
+        await prisma.dispatchImage.update({ where: { id: dispatchImageId }, data: { ocrStatus: "REVIEW_REQUIRED" } });
+        return { dispatchImageId, itemCount: existing, reviewCount: 0, errorCount: 0 };
+      }
     }
 
-    // 6. テキストをパース（配送明細）- ヘッダーの W番号を補完として渡す
-    const parsed = parseDispatchText(rawText, header.waveNo);
+    // OCR.space 実行（座標付き）
+    const ocrResult = await runOcrSpace(buffer);
 
-    // 7. バリデーション（要確認フラグ付与）
-    const validated = parsed.map((item) => ({
-      ...item,
-      reviewReasons: validateItem(item, parsed),
-    }));
+    // ヘッダー情報抽出
+    const header = extractHeaderInfo(ocrResult.parsedText);
 
-    // 8. delivery_items に一括 INSERT
+    // 座標ベース行列マッピング
+    const allRows = mapWordsToRows(ocrResult.words, ocrResult.imageWidth, ocrResult.imageHeight);
+    const dataRows = filterDataRows(allRows);
+
+    // フィールド抽出 + confidence 評価
+    const extracted = dataRows.map((row) => extractItemFromRow(row, header.waveNo));
+    const assessed = extracted.map((item) => {
+      const { confidence, reasons } = assessConfidence(item, extracted);
+      return { ...item, reviewReasons: reasons, _confidence: confidence };
+    });
+
+    // 再OCR時は既存データ削除
+    if (options.forceReOcr) {
+      await prisma.deliveryItem.deleteMany({ where: { dispatchImageId } });
+    }
+
     let reviewCount = 0;
-    for (const item of validated) {
+    for (const item of assessed) {
       const hasReview = item.reviewReasons.length > 0;
       if (hasReview) reviewCount++;
-
       await prisma.deliveryItem.create({
         data: {
           dispatchImageId,
@@ -81,91 +89,66 @@ export async function runOcr(
           caseCount: item.caseCount ?? 0,
           totalCount: item.totalCount ?? 0,
           memo: item.memo,
-          ocrNotes: item.reviewReasons.length > 0
-            ? JSON.stringify(item.reviewReasons)
-            : null,
+          ocrNotes: hasReview ? JSON.stringify(item.reviewReasons) : null,
           ocrStatus: hasReview ? "REVIEW_REQUIRED" : "PENDING",
           deliveryStatus: "PENDING_OCR",
         },
       });
     }
 
-    // 9. dispatch_images ステータスを更新
-    //    OCR完了 = REVIEW_REQUIRED（STEP4で管理者確認後に CONFIRMED）
+    const overallConf = assessed.every((a) => a._confidence === "high") ? "high"
+      : assessed.some((a) => a._confidence === "low") ? "low" : "medium";
+
     await prisma.dispatchImage.update({
       where: { id: dispatchImageId },
-      data: { ocrStatus: "REVIEW_REQUIRED" },
-    });
-
-    // 10. 操作ログ（個人情報は含めない）
-    await prisma.auditLog.create({
       data: {
-        userId,
-        action: "RUN_OCR",
-        targetType: "dispatch_images",
-        targetId: dispatchImageId,
-        afterData: {
-          itemCount: validated.length,
-          reviewCount,
-        },
+        ocrStatus: "REVIEW_REQUIRED",
+        ocrProvider: "ocrspace",
+        imageHash,
+        ...(options.forceReOcr ? { reOcrCount: { increment: 1 } } : {}),
+        ...(header.deliveryDate ? { deliveryDate: header.deliveryDate } : {}),
+        ...(header.area ? { area: header.area } : {}),
+        ...(header.waveNo ? { waveNo: header.waveNo } : {}),
       },
     });
 
-    return {
-      dispatchImageId,
-      itemCount: validated.length,
-      reviewCount,
-      errorCount: 0,
-    };
+    await logOcrUsage({
+      dispatchImageId, imageHash,
+      status: options.forceReOcr ? "reocr" : "success",
+      confidence: overallConf,
+      itemCount: assessed.length,
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action: options.forceReOcr ? "RE_OCR" : "RUN_OCR",
+        targetType: "dispatch_images",
+        targetId: dispatchImageId,
+        afterData: { provider: "ocrspace", itemCount: assessed.length, reviewCount, confidence: overallConf },
+      },
+    });
+
+    return { dispatchImageId, itemCount: assessed.length, reviewCount, errorCount: 0 };
+
   } catch (err) {
-    // エラー時は ERROR ステータスに更新
-    await prisma.dispatchImage.update({
-      where: { id: dispatchImageId },
-      data: { ocrStatus: "ERROR" },
-    });
-
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action: "RUN_OCR_ERROR",
-        targetType: "dispatch_images",
-        targetId: dispatchImageId,
-        afterData: {
-          error: err instanceof Error ? err.message : "不明なエラー",
-        },
-      },
-    });
-
+    const msg = err instanceof Error ? err.message : "不明なエラー";
+    await prisma.dispatchImage.update({ where: { id: dispatchImageId }, data: { ocrStatus: "ERROR" } });
+    await logOcrUsage({ dispatchImageId, status: "error", errorMessage: msg });
     throw err;
   }
 }
 
-/**
- * OCR テキストから配車表のヘッダー情報（配送日・エリア・W番号）を抽出する。
- * L1M配車表の左下に記載されている情報を読み取る。
- */
-function extractHeaderInfo(rawText: string): {
-  deliveryDate: Date | null;
-  area: string | null;
-  waveNo: string | null;
-} {
-  // 配送日: YYYY/MM/DD または YYYY年MM月DD日 形式
+function extractHeaderInfo(rawText: string) {
   const dateMatch = rawText.match(/(\d{4})[\/年](\d{1,2})[\/月](\d{1,2})/);
   let deliveryDate: Date | null = null;
   if (dateMatch) {
     const d = new Date(`${dateMatch[1]}-${dateMatch[2].padStart(2, "0")}-${dateMatch[3].padStart(2, "0")}`);
     if (!isNaN(d.getTime())) deliveryDate = d;
   }
-
-  // W番号: W1〜W6
   const waveMatch = rawText.match(/\b(W[1-6])\b/i);
   const waveNo = waveMatch ? waveMatch[1].toUpperCase() : null;
-
-  // エリア: 配車表左下の地名（「美女木」「東京」など）
-  // バーコード番号の上に記載されることが多い
-  const areaMatch = rawText.match(/([^\s\d]{2,8})\s+W[1-6]/i)
-    ?? rawText.match(/(?:拠点|エリア|地区)[：:\s]*([^\s\d]{2,8})/);
+  const areaMatch = rawText.match(/([^\s\d]{2,8})\s+W[1-6]/i);
   const area = areaMatch ? areaMatch[1].trim() : null;
-
   return { deliveryDate, area, waveNo };
 }

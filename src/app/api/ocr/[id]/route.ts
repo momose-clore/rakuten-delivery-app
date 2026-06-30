@@ -3,11 +3,11 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
 import { runOcr } from "@/lib/ocr";
 
-// Tesseract.js は時間がかかるため最大60秒まで許容
+// OCR.space + 前処理のため最大60秒まで許容
 export const maxDuration = 60;
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
@@ -19,6 +19,8 @@ export async function POST(
   }
 
   const { id } = await params;
+  const body = await req.json().catch(() => ({}));
+  const forceReOcr = body?.forceReOcr === true;
 
   const image = await prisma.dispatchImage.findUnique({ where: { id } });
   if (!image) {
@@ -28,13 +30,12 @@ export async function POST(
   if (image.ocrStatus === "PROCESSING") {
     return NextResponse.json({ error: "OCR処理中です" }, { status: 409 });
   }
-  if (image.ocrStatus === "CONFIRMED") {
+  if (image.ocrStatus === "CONFIRMED" && !forceReOcr) {
     return NextResponse.json({ error: "OCR確定済みです" }, { status: 409 });
   }
 
   try {
-    // 同期実行（Vercel serverless では非同期は関数終了時に切れるため）
-    const result = await runOcr(id, session.user.id);
+    const result = await runOcr(id, session.user.id, { forceReOcr });
     return NextResponse.json({
       success: true,
       itemCount: result.itemCount,
