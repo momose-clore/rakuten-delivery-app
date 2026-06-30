@@ -1,33 +1,49 @@
 import type { OcrWord } from "./ocrspace";
-import { getColumnByX, type FieldName } from "./table-template";
+import type { TableRegion } from "./table-detector";
+import { toRelativeX } from "./table-detector";
+import { calibrateColumnsByHeader, getColumnByXPct, type FieldName } from "./table-template";
 
 export interface MappedRow {
   rowIndex: number;
   yCenter: number;
   cells: Partial<Record<FieldName, string[]>>;
+  isDataRow: boolean;
 }
 
-const ROW_TOLERANCE_PCT = 2; // 画像高さの 2% 以内を同じ行とみなす
+function medianWordHeight(words: OcrWord[]): number {
+  if (words.length === 0) return 15;
+  const heights = words.map((w) => w.height).sort((a, b) => a - b);
+  return heights[Math.floor(heights.length / 2)];
+}
 
-/**
- * OCR単語座標 → テーブル行列構造に変換
- *
- * 1. y座標でクラスタリング（同じ行グループ化）
- * 2. 各単語を x座標 → 列定義にマッピング
- */
 export function mapWordsToRows(
   words: OcrWord[],
   imageWidth: number,
-  imageHeight: number
+  _imageHeight: number,
+  region?: TableRegion | null
 ): MappedRow[] {
   if (words.length === 0) return [];
 
-  const tolerance = imageHeight * (ROW_TOLERANCE_PCT / 100);
+  const tableWords = region
+    ? words.filter(
+        (w) =>
+          w.left >= region.xMin - 5 && w.left + w.width <= region.xMax + 5 &&
+          w.top >= region.yMin - 5 && w.top <= region.yMax + 5
+      )
+    : words;
 
-  // y座標でソート
-  const sorted = [...words].sort((a, b) => a.top - b.top);
+  if (tableWords.length === 0) return [];
 
-  // 行グループ化
+  const toRelX = region
+    ? (px: number) => toRelativeX(px, region)
+    : (px: number) => (px / imageWidth) * 100;
+
+  const calibratedColumns = calibrateColumnsByHeader(tableWords, toRelX);
+
+  const wordHeight = medianWordHeight(tableWords);
+  const tolerance = Math.max(wordHeight * 0.8, 8);
+
+  const sorted = [...tableWords].sort((a, b) => a.top - b.top);
   const rowGroups: OcrWord[][] = [];
   let currentGroup: OcrWord[] = [sorted[0]];
 
@@ -43,32 +59,49 @@ export function mapWordsToRows(
   }
   if (currentGroup.length > 0) rowGroups.push(currentGroup);
 
-  // 各行の単語を列にマッピング
-  return rowGroups.map((group, idx) => {
+  const rawRows = rowGroups.map((group, idx) => {
     const yCenter = group.reduce((s, w) => s + w.top + w.height / 2, 0) / group.length;
     const cells: Partial<Record<FieldName, string[]>> = {};
 
-    // 左から右へ処理
-    const sortedGroup = [...group].sort((a, b) => a.left - b.left);
-
-    for (const word of sortedGroup) {
-      const col = getColumnByX(word.left + word.width / 2, imageWidth);
+    for (const word of [...group].sort((a, b) => a.left - b.left)) {
+      const xRelCenter = toRelX(word.left + word.width / 2);
+      const col = getColumnByXPct(xRelCenter, calibratedColumns);
       if (col) {
         if (!cells[col.name]) cells[col.name] = [];
         cells[col.name]!.push(word.text);
       }
     }
 
-    return { rowIndex: idx, yCenter, cells };
+    const isDataRow = isDispatchRow(cells);
+    return { rowIndex: idx, yCenter, cells, isDataRow };
   });
+
+  return mergeAddressContinuationRows(rawRows);
 }
 
-/** 行から配車No または 伝票No が含まれるものだけ抽出（データ行判定） */
+function isDispatchRow(cells: Partial<Record<FieldName, string[]>>): boolean {
+  const dk = (cells.dispatchKey ?? []).join("");
+  const inv = (cells.invoiceNo ?? []).join("");
+  return /\d+-\d+/.test(dk) || /\d{10,}/.test(inv.replace(/\s/g, ""));
+}
+
+function mergeAddressContinuationRows(rows: MappedRow[]): MappedRow[] {
+  const result: MappedRow[] = [];
+  for (const row of rows) {
+    if (row.isDataRow || result.length === 0) {
+      result.push(row);
+      continue;
+    }
+    const prev = result[result.length - 1];
+    const extra = row.cells.address ?? row.cells.memo ?? [];
+    if (extra.length > 0) {
+      if (!prev.cells.address) prev.cells.address = [];
+      prev.cells.address.push(...extra);
+    }
+  }
+  return result;
+}
+
 export function filterDataRows(rows: MappedRow[]): MappedRow[] {
-  return rows.filter((row) => {
-    const dk = row.cells.dispatchKey?.join("") ?? "";
-    const inv = row.cells.invoiceNo?.join("") ?? "";
-    // 配車No（数字-数字形式）or 伝票No（10桁以上の数字）が含まれる行
-    return /\d+-\d+/.test(dk) || /\d{10,}/.test(inv.replace(/\s/g, ""));
-  });
+  return rows.filter((r) => r.isDataRow);
 }

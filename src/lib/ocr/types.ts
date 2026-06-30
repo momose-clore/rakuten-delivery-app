@@ -3,9 +3,12 @@ export type ReviewReason =
   | "WAVE_NO_MISSING"
   | "VEHICLE_NO_MISSING"
   | "ADDRESS_EMPTY"
+  | "ADDRESS_SUSPECT"
   | "PHONE_INVALID"
   | "COUNT_MISMATCH"
-  | "INVOICE_DUPLICATE";
+  | "INVOICE_DUPLICATE"
+  | "INVOICE_MISSING"
+  | "AUTO_CORRECTED_BY_HISTORY";
 
 export interface ParsedDeliveryItem {
   dispatchKey: string | null;

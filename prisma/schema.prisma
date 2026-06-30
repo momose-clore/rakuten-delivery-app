@@ -257,3 +257,21 @@ model AuditLog {
 
   @@map("audit_logs")
 }
+
+// ─────────────────────────────────────────────
+// OCR修正パターン学習
+// ─────────────────────────────────────────────
+
+model OcrCorrectionPattern {
+  id          String   @id @default(cuid())
+  fieldName   String   @map("field_name")
+  beforeValue String   @map("before_value")
+  afterValue  String   @map("after_value")
+  patternType String   @default("exact") @map("pattern_type")
+  usageCount  Int      @default(1) @map("usage_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([fieldName, beforeValue])
+  @@map("ocr_correction_patterns")
+}

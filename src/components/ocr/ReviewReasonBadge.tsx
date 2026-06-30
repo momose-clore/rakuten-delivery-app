@@ -1,13 +1,16 @@
 import { REVIEW_REASON_LABELS, type ReviewReason } from "@/types/dispatch";
 
 const BADGE_COLORS: Record<ReviewReason, string> = {
-  DISPATCH_KEY_MISSING: "bg-red-100 text-red-700",
-  WAVE_NO_MISSING:      "bg-red-100 text-red-700",
-  VEHICLE_NO_MISSING:   "bg-red-100 text-red-700",
-  ADDRESS_EMPTY:        "bg-red-100 text-red-700",
-  INVOICE_DUPLICATE:    "bg-red-100 text-red-700",
-  PHONE_INVALID:        "bg-orange-100 text-orange-700",
-  COUNT_MISMATCH:       "bg-orange-100 text-orange-700",
+  DISPATCH_KEY_MISSING:       "bg-red-100 text-red-700",
+  WAVE_NO_MISSING:            "bg-red-100 text-red-700",
+  VEHICLE_NO_MISSING:         "bg-red-100 text-red-700",
+  ADDRESS_EMPTY:              "bg-red-100 text-red-700",
+  ADDRESS_SUSPECT:            "bg-yellow-100 text-yellow-700",
+  INVOICE_DUPLICATE:          "bg-red-100 text-red-700",
+  INVOICE_MISSING:            "bg-orange-100 text-orange-700",
+  PHONE_INVALID:              "bg-orange-100 text-orange-700",
+  COUNT_MISMATCH:             "bg-orange-100 text-orange-700",
+  AUTO_CORRECTED_BY_HISTORY:  "bg-blue-100 text-blue-700",
 };
 
 interface ReviewReasonBadgeProps {

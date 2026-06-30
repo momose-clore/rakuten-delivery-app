@@ -10,18 +10,24 @@ export type ReviewReason =
   | "WAVE_NO_MISSING"
   | "VEHICLE_NO_MISSING"
   | "ADDRESS_EMPTY"
+  | "ADDRESS_SUSPECT"
   | "PHONE_INVALID"
   | "COUNT_MISMATCH"
-  | "INVOICE_DUPLICATE";
+  | "INVOICE_DUPLICATE"
+  | "INVOICE_MISSING"
+  | "AUTO_CORRECTED_BY_HISTORY";
 
 export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
-  DISPATCH_KEY_MISSING: "配車No不明",
-  WAVE_NO_MISSING:      "W番号不明",
-  VEHICLE_NO_MISSING:   "号車番号不明",
-  ADDRESS_EMPTY:        "住所空欄",
-  PHONE_INVALID:        "電話番号不正",
-  COUNT_MISMATCH:       "数量不一致",
-  INVOICE_DUPLICATE:    "重複伝票No",
+  DISPATCH_KEY_MISSING:       "配車No不明",
+  WAVE_NO_MISSING:            "W番号不明",
+  VEHICLE_NO_MISSING:         "号車番号不明",
+  ADDRESS_EMPTY:              "住所空欄",
+  ADDRESS_SUSPECT:            "住所要確認",
+  PHONE_INVALID:              "電話番号不正",
+  COUNT_MISMATCH:             "数量不一致",
+  INVOICE_DUPLICATE:          "重複伝票No",
+  INVOICE_MISSING:            "伝票No不明",
+  AUTO_CORRECTED_BY_HISTORY:  "履歴から自動補正",
 };
 
 export interface DeliveryItem {

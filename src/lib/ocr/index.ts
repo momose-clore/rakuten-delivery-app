@@ -1,12 +1,8 @@
-/**
- * OCR オーケストレーター
- * OCRプロバイダー: OCR.space のみ
- * AI/Gemini fallback: なし
- */
 import { prisma } from "@/lib/prisma";
 import { storageProvider } from "@/lib/storage";
 import { runOcrSpace } from "./ocrspace";
 import { preprocessImageForOcr } from "./image-preprocess";
+import { detectTableRegion } from "./table-detector";
 import { mapWordsToRows, filterDataRows } from "./layout-mapper";
 import { extractItemFromRow } from "./field-extractor";
 import { assessConfidence } from "./confidence";
@@ -36,7 +32,6 @@ export async function runOcr(
     const buffer = await preprocessImageForOcr(rawBuffer);
     const imageHash = computeImageHash(rawBuffer);
 
-    // 重複チェック
     if (!options.forceReOcr && image.imageHash === imageHash) {
       const existing = await prisma.deliveryItem.count({ where: { dispatchImageId } });
       if (existing > 0) {
@@ -52,8 +47,11 @@ export async function runOcr(
     // ヘッダー情報抽出
     const header = extractHeaderInfo(ocrResult.parsedText);
 
-    // 座標ベース行列マッピング
-    const allRows = mapWordsToRows(ocrResult.words, ocrResult.imageWidth, ocrResult.imageHeight);
+    // 表領域自動検出 → fallback は null（固定テンプレート）
+    const region = detectTableRegion(ocrResult.words, ocrResult.imageWidth, ocrResult.imageHeight);
+
+    // 座標ベース行列マッピング（表領域使用）
+    const allRows = mapWordsToRows(ocrResult.words, ocrResult.imageWidth, ocrResult.imageHeight, region);
     const dataRows = filterDataRows(allRows);
 
     // フィールド抽出 + confidence 評価
@@ -63,7 +61,6 @@ export async function runOcr(
       return { ...item, reviewReasons: reasons, _confidence: confidence };
     });
 
-    // 再OCR時は既存データ削除
     if (options.forceReOcr) {
       await prisma.deliveryItem.deleteMany({ where: { dispatchImageId } });
     }
@@ -125,7 +122,7 @@ export async function runOcr(
         action: options.forceReOcr ? "RE_OCR" : "RUN_OCR",
         targetType: "dispatch_images",
         targetId: dispatchImageId,
-        afterData: { provider: "ocrspace", itemCount: assessed.length, reviewCount, confidence: overallConf },
+        afterData: { provider: "ocrspace", itemCount: assessed.length, reviewCount, confidence: overallConf, tableRegionDetected: !!region },
       },
     });
 

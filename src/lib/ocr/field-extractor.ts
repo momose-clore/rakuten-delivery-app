@@ -9,9 +9,6 @@ import {
   normalizeName,
 } from "./normalizer";
 
-/**
- * レイアウトマッピング済みの行から配送明細を抽出
- */
 export function extractItemFromRow(
   row: MappedRow,
   defaultWaveNo?: string | null
@@ -19,11 +16,10 @@ export function extractItemFromRow(
   const get = (field: keyof MappedRow["cells"]) =>
     (row.cells[field] ?? []).join(" ").trim();
 
-  // 配車No
   const dispatchKeyRaw = get("dispatchKey");
   const dispatchKey = normalizeDispatchKey(dispatchKeyRaw, defaultWaveNo);
 
-  // 伝票No（配車No列・住所列に混入している可能性も考慮）
+  // 伝票No（住所欄・氏名欄に混入している場合も抽出）
   const invoiceRaw = get("invoiceNo")
     || extractInvoiceFromMixedText(get("address"))
     || extractInvoiceFromMixedText(get("customerName"));
@@ -33,26 +29,27 @@ export function extractItemFromRow(
   const phoneRaw = get("customerPhone") || extractPhoneFromText(get("address"));
   const { value: customerPhone, valid: phoneValid } = normalizePhone(phoneRaw);
 
-  // 住所（電話番号・伝票Noを除去）
+  // 住所（強化版: ADDRESS_SUSPECT 判定付き）
   const addressRaw = get("address");
-  const address = normalizeAddress(addressRaw);
+  const { value: address, suspect: addressSuspect } = normalizeAddress(addressRaw);
 
-  // 氏名（住所が混入していないかチェック）
+  // 氏名
   const nameRaw = get("customerName");
   const customerName = normalizeName(nameRaw);
 
-  // 数量
-  const normalOriconCount = normalizeCount(get("normalOricon"));
-  const coolerBoxCount = normalizeCount(get("coolerBox"));
-  const caseCount = normalizeCount(get("caseCount"));
-  const totalCount = normalizeCount(get("totalCount"));
+  // 数量（数量列にある数字のみ）
+  const normalOriconCount = normalizeCount(get("normalOricon"), true);
+  const coolerBoxCount    = normalizeCount(get("coolerBox"), true);
+  const caseCount         = normalizeCount(get("caseCount"), true);
+  const totalCount        = normalizeCount(get("totalCount"), true);
 
-  // 特記・メモ
   const specialFlag = get("specialFlag") || null;
-  const memo = get("memo") || null;
+  const memo        = get("memo") || null;
 
-  // 配車No分解
   const keyParts = dispatchKey ? parseDispatchKeyParts(dispatchKey) : null;
+
+  // ADDRESS_SUSPECT を reviewReasons の初期値として渡す
+  const initialReasons = addressSuspect && address ? ["ADDRESS_SUSPECT" as const] : [];
 
   return {
     dispatchKey,
@@ -69,7 +66,7 @@ export function extractItemFromRow(
     caseCount,
     totalCount,
     memo,
-    reviewReasons: [], // confidence.ts で付与
+    reviewReasons: initialReasons,
   };
 }
 

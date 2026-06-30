@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidateDeliveryItem } from "@/lib/ocr/revalidate";
+import { recordItemCorrections } from "@/lib/ocr/correction";
 import type { DeliveryItem } from "@/types/dispatch";
 
 // 編集を許可するフィールドの whitelist
@@ -125,6 +126,15 @@ export async function PATCH(
       ocrStatus: revalidated.ocrStatus,
     },
   });
+
+  // 修正履歴を学習（安全なフィールドのみ）
+  const beforeRecord: Record<string, string | null> = {};
+  const afterRecord: Record<string, string | null> = {};
+  for (const field of Object.keys(updates)) {
+    beforeRecord[field] = String((existing as Record<string, unknown>)[field] ?? "");
+    afterRecord[field] = String((updates as Record<string, unknown>)[field] ?? "");
+  }
+  await recordItemCorrections(beforeRecord, afterRecord).catch(() => {});
 
   // 監査ログ（フィールド名のみ記録。値は個人情報を含む可能性があるため省略）
   await prisma.auditLog.create({

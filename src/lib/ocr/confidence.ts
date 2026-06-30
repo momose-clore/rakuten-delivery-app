@@ -2,20 +2,16 @@ import type { ParsedDeliveryItem, ReviewReason } from "./types";
 
 export type Confidence = "high" | "medium" | "low";
 
-/**
- * AIフォールバックなし。
- * confidence が low でも Gemini/AI には送らず、ocr_notes に理由を保存して
- * OCR確認画面で人間が修正する。
- */
 export function assessConfidence(
   item: ParsedDeliveryItem,
   allItems: ParsedDeliveryItem[]
 ): { confidence: Confidence; reasons: ReviewReason[] } {
-  const reasons: ReviewReason[] = [];
+  const reasons: ReviewReason[] = [...(item.reviewReasons ?? [])];
 
   if (!item.dispatchKey) reasons.push("DISPATCH_KEY_MISSING");
   if (!item.waveNo) reasons.push("WAVE_NO_MISSING");
   if (!item.vehicleNo) reasons.push("VEHICLE_NO_MISSING");
+  if (!item.invoiceNo) reasons.push("INVOICE_MISSING");
 
   if (!item.address || item.address.trim().length < 3) {
     reasons.push("ADDRESS_EMPTY");
@@ -39,22 +35,27 @@ export function assessConfidence(
     if (dupes.length > 0) reasons.push("INVOICE_DUPLICATE");
   }
 
-  // confidence 判定
-  let confidence: Confidence;
-  const criticalCount = reasons.filter((r) =>
-    ["DISPATCH_KEY_MISSING", "WAVE_NO_MISSING", "ADDRESS_EMPTY", "INVOICE_DUPLICATE"].includes(r)
+  // 重複除去
+  const uniqueReasons = [...new Set(reasons)] as ReviewReason[];
+
+  const criticalCount = uniqueReasons.filter((r) =>
+    ["DISPATCH_KEY_MISSING", "ADDRESS_EMPTY", "INVOICE_DUPLICATE"].includes(r)
   ).length;
-  const lightCount = reasons.filter((r) =>
+  const moderateCount = uniqueReasons.filter((r) =>
+    ["WAVE_NO_MISSING", "ADDRESS_SUSPECT", "INVOICE_MISSING"].includes(r)
+  ).length;
+  const lightCount = uniqueReasons.filter((r) =>
     ["PHONE_INVALID", "COUNT_MISMATCH", "VEHICLE_NO_MISSING"].includes(r)
   ).length;
 
-  if (criticalCount === 0 && lightCount === 0) {
+  let confidence: Confidence;
+  if (criticalCount === 0 && moderateCount === 0 && lightCount === 0) {
     confidence = "high";
-  } else if (criticalCount === 0 && lightCount <= 2) {
+  } else if (criticalCount === 0 && moderateCount + lightCount <= 2) {
     confidence = "medium";
   } else {
     confidence = "low";
   }
 
-  return { confidence, reasons };
+  return { confidence, reasons: uniqueReasons };
 }
