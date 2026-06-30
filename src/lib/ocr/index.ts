@@ -3,6 +3,7 @@ import { storageProvider } from "@/lib/storage";
 import { extractTextFromImage } from "./vision";
 import { parseDispatchText } from "./parser";
 import { validateItem } from "./validator";
+import { preprocessImageForOcr } from "./preprocess";
 import type { OcrRunResult } from "./types";
 
 /**
@@ -27,12 +28,15 @@ export async function runOcr(
 
   try {
     // 3. 画像バッファ取得（storage 抽象化を経由）
-    const buffer = await storageProvider.read(image.imageUrl);
+    const rawBuffer = await storageProvider.read(image.imageUrl);
 
-    // 4. Cloud Vision API でテキスト抽出
+    // 4. 画像前処理（鮮明化・拡大・コントラスト強化）
+    const buffer = await preprocessImageForOcr(rawBuffer);
+
+    // 5. OCR でテキスト抽出
     const rawText = await extractTextFromImage(buffer);
 
-    // 5. ヘッダー情報（配送日・エリア・W番号）を抽出して dispatch_images を更新
+    // 6. ヘッダー情報（配送日・エリア・W番号）を抽出して dispatch_images を更新
     const header = extractHeaderInfo(rawText);
     if (header.deliveryDate || header.area || header.waveNo) {
       await prisma.dispatchImage.update({
