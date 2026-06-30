@@ -357,3 +357,38 @@ model DispatchImportRow {
 
   @@map("dispatch_import_rows")
 }
+
+// ─────────────────────────────────────────────
+// 住所補正・手動ピン修正（GODOOR不使用・自社DB蓄積方式）
+// ─────────────────────────────────────────────
+
+model DeliveryLocationOverride {
+  id               String   @id @default(cuid())
+  normalizedAddress String  @map("normalized_address")
+  postalCode       String?  @map("postal_code")
+  prefecture       String?
+  city             String?
+  town             String?
+  block            String?
+  buildingName     String?  @map("building_name")
+  lat              Float?
+  lng              Float?
+  placeId          String?  @map("place_id")
+  entranceMemo     String?  @map("entrance_memo")
+  buildingMemo     String?  @map("building_memo")
+  nameplateMemo    String?  @map("nameplate_memo")
+  accessMemo       String?  @map("access_memo")
+  cautionMemo      String?  @map("caution_memo")
+  parkingMemo      String?  @map("parking_memo")
+  source           String   @default("manual") // manual|history|geocode
+  status           String   @default("pending") // pending|approved|rejected
+  usageCount       Int      @default(0) @map("usage_count")
+  createdBy        String?  @map("created_by")
+  approvedBy       String?  @map("approved_by")
+  approvedAt       DateTime? @map("approved_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([normalizedAddress])
+  @@map("delivery_location_overrides")
+}

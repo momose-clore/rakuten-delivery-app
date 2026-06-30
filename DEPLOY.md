@@ -16,8 +16,8 @@
 | C | Vercel アカウント作成 | https://vercel.com |
 | D | Vercel プロジェクト作成 → GitHub リポジトリを import | Vercel ダッシュボード |
 | E | Vercel Blob Store 作成 → `BLOB_READ_WRITE_TOKEN` 取得 | Vercel ダッシュボード → Storage |
-| F | Google Cloud Console → Cloud Vision API 有効化 → API キー発行 | https://console.cloud.google.com |
-| G | Google Cloud Console → Geocoding API 有効化 → API キー発行 | https://console.cloud.google.com |
+| F | Google Cloud Console → Geocoding API 有効化 → API キー発行 | https://console.cloud.google.com |
+| G | OCR.space アカウント作成 → `OCR_SPACE_API_KEY` 取得（本番必須） | https://ocr.space/ocrapi/freekey |
 | H | CARIO API キー取得（CARIO 担当者へ依頼） | CARIO 側 |
 | I | 本番管理者メール・パスワードの決定 | 社内で決定 |
 
@@ -60,7 +60,7 @@
 | `DATABASE_URL` | Neon ダッシュボード → Connection string | ⏳ |
 | `NEXTAUTH_SECRET` | `openssl rand -base64 32` で生成 | 🤖 自動生成 |
 | `NEXTAUTH_URL` | Vercel デプロイ後の URL | ⏳ |
-| `GOOGLE_CLOUD_VISION_API_KEY` | Google Cloud Console | ⏳ |
+| `OCR_SPACE_API_KEY` | OCR.space で登録（本番必須・未設定でOCR不可） | ⏳ |
 | `GOOGLE_MAPS_API_KEY` | Google Cloud Console | ⏳ |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob Store 作成後 | ⏳ |
 | `CARIO_API_BASE_URL` | CARIO 担当者から（未確定はスキップ可） | ⏳ |
@@ -103,7 +103,7 @@ vercel link
 vercel env add DATABASE_URL production
 vercel env add NEXTAUTH_SECRET production
 vercel env add NEXTAUTH_URL production
-vercel env add GOOGLE_CLOUD_VISION_API_KEY production
+vercel env add OCR_SPACE_API_KEY production
 vercel env add GOOGLE_MAPS_API_KEY production
 vercel env add BLOB_READ_WRITE_TOKEN production
 vercel env add ADMIN_EMAIL production

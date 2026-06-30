@@ -52,7 +52,7 @@ cp .env.example .env.local
 | `DATABASE_URL` | PostgreSQL 接続 URL |
 | `NEXTAUTH_SECRET` | JWT 署名用シークレット（32文字以上推奨） |
 | `NEXTAUTH_URL` | アプリの URL（例: http://localhost:3000） |
-| `OCR_SPACE_API_KEY` | OCR.space API キー（任意・未設定時はデモキー） |
+| `OCR_SPACE_API_KEY` | **本番必須**（未設定で OCR 不可）・開発はデモキー可 |
 | `GOOGLE_MAPS_API_KEY` | 住所 Geocoding 用（STEP 7 以降必須） |
 
 NEXTAUTH_SECRET の生成例：
@@ -372,6 +372,8 @@ export const WAREHOUSE = {
 | 項目 | 内容 |
 |---|---|
 | OCR 精度 | 実際の L1M 配車表で確認・パーサーの正規表現調整が必要な場合あり |
+| 住所補正 | GODOOR 不使用・Google Geocoding + 自社DB（`delivery_location_overrides`）で対応 |
+| 手動ピン修正 | 次フェーズ実装予定（テーブル定義は完了） |
 | ルート最適化 | 最近隣法（初期 MVP）。本番では Google Routes API 等への高度化を検討 |
 | 自動配車 | 現状は半自動（均等割当）。完全自動化は初期 MVP 対象外 |
 | OCR自動確定 | 管理者確認必須。自動確定は実装していない |

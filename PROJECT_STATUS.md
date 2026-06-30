@@ -23,7 +23,7 @@ CARIOとは別に新規開発するWebアプリ。
 | DB | PostgreSQL | 16 | 開発: Docker / 本番: Neon |
 | 認証 | NextAuth.js v5 / Credentials + JWT | beta | |
 | パスワード | bcryptjs | — | |
-| OCR | **OCR.space**（1画像1回・Gemini/AI/Cloud Vision 不使用） | — | `OCR_SPACE_API_KEY`（未設定時はデモキー） |
+| OCR | **OCR.space**（1画像1回・Gemini/AI/Cloud Vision 不使用） | — | `OCR_SPACE_API_KEY`（開発: デモキー可 / **本番: 必須**） |
 | 地図 | Google Maps Geocoding API + Maps URL | — | 要 API キー |
 | 画像ストレージ | Vercel Blob | — | `@vercel/blob` 実装済み・要 `BLOB_READ_WRITE_TOKEN` |
 | CARIO連携 | REST API（フォールバック: モック） | — | 仕様確定後に `mapper.ts` 調整 |
@@ -50,6 +50,21 @@ CARIOとは別に新規開発するWebアプリ。
 ✅ **ログイン修正完了・初回テスト中**
 
 > **🎉 STEP 1〜9 すべて完了。MVP 完成。**
+
+---
+
+## 絶対方針（変更禁止）
+
+| 項目 | 方針 |
+|---|---|
+| OCR エンジン | **OCR.space のみ**（Cloud Vision / Gemini / AI fallback 全て不使用） |
+| OCR_SPACE_API_KEY | 開発: デモキー可 / **本番: 必須（未設定でOCR実行不可）** |
+| 低信頼行の処理 | 自動救済パイプライン先行 → 不足のみ `NEEDS_REVIEW` → 編集画面は最後の保険 |
+| 画像OCR・スマホカメラOCR | 最後の手段ではなく **通常業務の主力機能** |
+| GODOOR / ゼンリン | **不使用**（有料住宅地図アプリのデータを流用しない） |
+| 住所補正方針 | Google Geocoding + 自社DB（手動ピン修正・入口メモ・配送履歴を蓄積） |
+| Google Maps | ナビ起動（1件ナビ主導線） + Geocoding のみ使用 |
+| 個人情報 | console.log 禁止 / raw OCR JSON・debug JSON を公開 URL 保存禁止 |
 
 ---
 
@@ -100,6 +115,66 @@ CARIOとは別に新規開発するWebアプリ。
 - ✅ OCR.space 1画像1回
 - ✅ 低信頼行は自動救済が先（人間修正前提にしない）
 - ✅ 個人情報を console.log しない
+
+---
+
+## Google Maps 連携方針
+
+| 用途 | 方針 |
+|---|---|
+| ナビ起動 | 1件ナビを主導線（`dir/?api=1&destination={lat},{lng}&travelmode=driving`） |
+| 複数件ルート | 補助機能・4件単位で分割 |
+| URL長制限 | 4件超はさらに分割・`fallback` として住所コピー |
+| 配送管理 | Google Maps 側に任せない（アプリ側の `route_order` を正とする） |
+| Geocoding | 住所 → 緯度経度変換のみ使用 |
+| Routes API / Optimize | 初期 MVP 対象外（将来検討） |
+
+---
+
+## GODOORなし・住所補正方針
+
+| 項目 | 方針 |
+|---|---|
+| GODOOR | **不使用**（有料住宅地図アプリのデータを流用しない） |
+| ゼンリン住宅地図 | **不使用** |
+| 住所精度向上方法 | Google Geocoding + 自社 DB（修正ピン・入口メモ・配送履歴を蓄積） |
+| 手動ピン修正 | 管理者が座標を手動修正 → `delivery_location_overrides` に保存 |
+| メモ蓄積 | 入口メモ・建物メモ・表札メモ・駐車位置メモ・注意メモ |
+| 過去履歴再利用 | 同一住所への過去メモを自動表示 |
+
+### `delivery_location_overrides` テーブル（実装済み・migration 適用待ち）
+
+```
+id / normalizedAddress / postalCode / prefecture / city / town / block /
+buildingName / lat / lng / placeId / entranceMemo / buildingMemo /
+nameplateMemo / accessMemo / cautionMemo / parkingMemo /
+source / status / usageCount / createdBy / approvedBy / approvedAt /
+createdAt / updatedAt
+```
+
+### 実装ステータス
+
+| 機能 | ステータス |
+|---|---|
+| `delivery_location_overrides` テーブル | ✅ スキーマ定義済み・⏳ migration 適用待ち |
+| 手動ピン修正 UI | ⬜ 次フェーズ |
+| 住所信頼度表示 | ⬜ 次フェーズ |
+| 入口/建物/表札メモ | ⬜ 次フェーズ |
+| 過去配送履歴の再利用 | ⬜ 次フェーズ |
+
+---
+
+## 個人情報データ保存方針
+
+| 項目 | 方針 |
+|---|---|
+| console.log | 氏名・電話・住所・伝票No を出力禁止 |
+| raw OCR words | 公開 URL で保存禁止 |
+| debug JSON | 公開 URL で保存禁止（`l1mDebugJsonUrl` は非公開 URL のみ） |
+| normalized JSON | 公開 URL で保存禁止 |
+| audit_logs | 値ではなく件数・対象 ID・状態・フィールド名のみ保存 |
+| Vercel Blob public | 配送表画像プレビューのみ許容・個人情報付き中間データは禁止 |
+| 画像プレビュー | 本番では認証済み API 経由が望ましい（現状は public Blob URL） |
 
 ---
 
@@ -470,7 +545,7 @@ npm run dev
 ### タスク一覧
 
 - [x] `src/lib/ocr/types.ts`（型定義）
-- [x] `src/lib/ocr/vision.ts`（Cloud Vision API 呼び出し）
+- [x] `src/lib/ocr/vision.ts`（OCR エントリポイント・OCR.space のみ使用・Cloud Vision 不使用）
 - [x] `src/lib/ocr/dispatch-no.ts`（配車No分解）
 - [x] `src/lib/ocr/parser.ts`（OCRテキストパース）
 - [x] `src/lib/ocr/validator.ts`（要確認フラグ付与）
@@ -496,7 +571,7 @@ npm run dev
 ### 動作確認手順
 
 ```bash
-# 1. GOOGLE_CLOUD_VISION_API_KEY を .env.local に設定
+# 1. OCR 設定（本番: OCR_SPACE_API_KEY 必須）
 # 2. Docker 起動・migrate 済みの状態で
 npm run dev
 
@@ -1018,33 +1093,47 @@ export { s3Provider as storageProvider } from "./s3";
 | Next.js 最適化 | ◎ 製作元 | △ nginx 設定が必要 |
 | **推奨** | **MVP 初期本番運用に最適** | **コスト重視・社内利用向け** |
 
-### 本番化前チェックリスト
+### 本番前チェックリスト（現行方針版）
 
 #### インフラ・環境
-- [ ] 画像ストレージを Vercel Blob または S3 に変更（`src/lib/storage/index.ts` 1行変更）
-- [ ] 本番 PostgreSQL への `DATABASE_URL` 設定
-- [ ] `NEXTAUTH_SECRET` を本番用ランダム値に変更（`openssl rand -base64 32`）
-- [ ] `NEXTAUTH_URL` を本番ドメインに設定
-- [ ] `OCR_SPACE_API_KEY` を設定（未設定時はデモキーで動作するが商用利用は要登録）
-- [ ] `GOOGLE_MAPS_API_KEY` 本番キーを設定
+- [ ] 画像ストレージ: Vercel Blob（`src/lib/storage/index.ts` 切替済み）
+- [ ] `DATABASE_URL` = Neon PostgreSQL 接続文字列
+- [ ] `NEXTAUTH_SECRET` = `openssl rand -base64 32` で生成
+- [ ] `NEXTAUTH_URL` = 本番ドメイン
+- [ ] **`OCR_SPACE_API_KEY` = 本番キー必須**（未設定で OCR 実行不可）
+- [ ] 本番でデモキー fallback が無効になっていること
+- [ ] `GOOGLE_MAPS_API_KEY` = Geocoding API キー
+- [ ] `BLOB_READ_WRITE_TOKEN` = Vercel Blob トークン
 - [ ] `prisma migrate deploy`（本番マイグレーション）
+- [ ] Cloud Vision 関連の環境変数が不要であること
+
+#### OCR・取込
+- [ ] `OCR_DAILY_LIMIT=180`（1日想定枚数に合わせて設定）
+- [ ] 実物 L1M 配車表でスマホカメラOCRをテスト
+- [ ] 画像OCRをiPhone Safari でテスト
+- [ ] 画像OCRをAndroid Chrome でテスト
+- [ ] PDF取込をテキスト PDF でテスト
+- [ ] CSV / Excel取込を実ファイルでテスト
+- [ ] 取込確認画面で確定できること
+- [ ] 取込後に割当 → ルート作成へ流れること
+
+#### Google Maps 連携
+- [ ] 1件ナビが正しく動くこと
+- [ ] 4件単位の分割 URL を確認
+- [ ] 住所コピー fallback を確認
 
 #### CARIO 連携
 - [ ] CARIO 接続方式確定（API / CSV / DB直接）
 - [ ] `src/lib/cario/getDrivers.ts` / `getShifts.ts` を実実装に差し替え
-- [ ] 接続先 URL・認証情報を環境変数に設定
 
 #### データ・アカウント
 - [ ] 管理者パスワードを本番用に変更
-- [ ] ドライバーアカウントを実際のドライバーで作成
-- [ ] テスト用 seed データを本番環境に投入しない
+- [ ] テスト用 seed データを本番 DB に投入しない
 
-#### 品質・動作確認
-- [ ] 美女木拠点の正確な緯度経度を `src/lib/maps/warehouse.ts` に設定
-- [ ] 実際の L1M 配車表で OCR 精度を確認・パーサー調整
-- [ ] Google Maps URL の件数上限（10件超は自動分割済み）を実データで確認
-- [ ] スマホ（iOS/Android）でドライバー画面の表示・操作を確認
-- [ ] 個人情報ログ出力がないかコード全体を確認
+#### セキュリティ
+- [ ] 個人情報ログが出ていない（氏名・電話・住所・伝票No）
+- [ ] Vercel Blob public 領域に raw OCR JSON・debug JSON を保存していない
+- [ ] `delivery_location_overrides` migration 適用済み
 
 ### 実データ検証チェックリスト
 
