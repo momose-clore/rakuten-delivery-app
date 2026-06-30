@@ -24,6 +24,13 @@ export interface DeliveryCardItem {
   lng: number | null;
   deliveryStatus: DeliveryStatus;
   mapsUrl?: string;
+  // 住所補正情報（location override）
+  entranceMemo?: string | null;
+  buildingMemo?: string | null;
+  nameplateMemo?: string | null;
+  parkingMemo?: string | null;
+  cautionMemo?: string | null;
+  hasOverride?: boolean;
 }
 
 interface DeliveryCardProps {
@@ -92,11 +99,25 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
       <div className="px-4 py-3 space-y-3">
         {/* 住所 */}
         <div>
-          <p className="text-xs text-gray-400 mb-0.5">住所</p>
+          <div className="flex items-center gap-1 mb-0.5">
+            <p className="text-xs text-gray-400">住所</p>
+            {item.hasOverride && <span className="text-xs bg-green-100 text-green-700 px-1 rounded">修正ピンあり</span>}
+          </div>
           <p className="text-sm font-medium text-gray-900 leading-snug">
             {item.address ?? "住所未登録"}
           </p>
         </div>
+
+        {/* 配送メモ（location override） */}
+        {(item.entranceMemo || item.buildingMemo || item.nameplateMemo || item.parkingMemo || item.cautionMemo) && (
+          <div className="space-y-1">
+            {item.entranceMemo && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🚪 入口: {item.entranceMemo}</p>}
+            {item.buildingMemo && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🏢 建物: {item.buildingMemo}</p>}
+            {item.nameplateMemo && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">📋 表札: {item.nameplateMemo}</p>}
+            {item.parkingMemo && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🅿️ 駐車: {item.parkingMemo}</p>}
+            {item.cautionMemo && <p className="text-xs text-red-700 bg-red-50 px-2 py-1 rounded">⚠️ 注意: {item.cautionMemo}</p>}
+          </div>
+        )}
 
         {/* 数量 */}
         <div className="flex gap-3 text-sm">

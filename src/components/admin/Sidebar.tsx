@@ -13,6 +13,7 @@ import {
   TruckIcon,
   LogOut,
   FolderInput,
+  MapPinOff,
 } from "lucide-react";
 
 const navItems = [
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/admin/shifts", label: "シフト取込", icon: CalendarDays },
   { href: "/admin/assignments", label: "割当", icon: ClipboardList },
   { href: "/admin/routes", label: "ルート確認", icon: MapPin },
+  { href: "/admin/location-overrides", label: "住所補正", icon: MapPinOff },
   { href: "/admin/progress", label: "配送進捗", icon: TruckIcon },
 ];
 
