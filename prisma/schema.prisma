@@ -318,8 +318,9 @@ model DispatchImportBatch {
   id               String   @id @default(cuid())
   sourceType       String   @map("source_type")   // pdf_text|pdf_ocr|csv|excel|paste|image_ocr|camera_ocr
   originalFileUrl  String?  @map("original_file_url")
-  normalizedJsonUrl String? @map("normalized_json_url")
-  status           String   @default("pending")    // pending|processing|review|confirmed|error
+  normalizedJsonUrl  String? @map("normalized_json_url")
+  l1mDebugJsonUrl    String? @map("l1m_debug_json_url")
+  status             String  @default("pending")    // pending|processing|review|confirmed|error
   totalRows        Int      @default(0) @map("total_rows")
   highCount        Int      @default(0) @map("high_count")
   mediumCount      Int      @default(0) @map("medium_count")

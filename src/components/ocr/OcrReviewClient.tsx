@@ -156,7 +156,7 @@ export function OcrReviewClient({ dispatchImage, initialItems }: OcrReviewClient
                 disabled={confirming}
                 className="px-4 py-2 rounded bg-green-600 text-white text-sm font-medium hover:bg-green-700 disabled:opacity-50"
               >
-                {confirming ? "確定中..." : "OCR結果を確定"}
+                {confirming ? "確定中..." : "取込結果を確定"}
               </button>
               {confirmError && (
                 <p className="text-sm text-red-600">{confirmError}</p>
@@ -174,8 +174,8 @@ export function OcrReviewClient({ dispatchImage, initialItems }: OcrReviewClient
 
 function BackLink() {
   return (
-    <Link href="/admin/dispatch-images" className="text-sm text-blue-600 hover:underline">
-      ← 配車表一覧に戻る
+    <Link href="/admin/ocr-review" className="text-sm text-blue-600 hover:underline">
+      ← 取込確認一覧に戻る
     </Link>
   );
 }
@@ -183,7 +183,7 @@ function BackLink() {
 function ImageMeta({ image }: { image: DispatchImage }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <h1 className="text-xl font-bold text-gray-900">OCR確認・修正</h1>
+      <h1 className="text-xl font-bold text-gray-900">取込確認・修正</h1>
       <span className="text-sm text-gray-500">
         {new Date(image.deliveryDate).toLocaleDateString("ja-JP")}
       </span>

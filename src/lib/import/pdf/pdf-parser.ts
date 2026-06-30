@@ -5,8 +5,11 @@
 import type { NormalizedDispatchRow } from "@/types/import";
 import { parsePasteText } from "@/lib/import/paste/paste-parser";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+// pdf-parse は DOMMatrix 等ブラウザAPIを参照するため動的インポートで遅延ロード
+async function getPdfParse() {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("pdf-parse") as (buffer: Buffer) => Promise<{ text: string; numpages: number }>;
+}
 
 export interface PdfParseResult {
   text: string;
@@ -17,6 +20,7 @@ export interface PdfParseResult {
 /** PDF バッファからテキスト抽出 */
 export async function extractPdfText(buffer: Buffer): Promise<PdfParseResult> {
   try {
+    const pdfParse = await getPdfParse();
     const data = await pdfParse(buffer);
     const text = data.text as string;
     const isScanned = text.replace(/\s/g, "").length < 50;

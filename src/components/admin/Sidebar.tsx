@@ -19,7 +19,7 @@ const navItems = [
   { href: "/admin/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/admin/dispatch-import", label: "配送表取込", icon: FolderInput },
   { href: "/admin/dispatch-images", label: "画像アップロード", icon: ImageIcon },
-  { href: "/admin/ocr-review", label: "OCR確認", icon: ScanText },
+  { href: "/admin/ocr-review", label: "取込確認", icon: ScanText },
   { href: "/admin/shifts", label: "シフト取込", icon: CalendarDays },
   { href: "/admin/assignments", label: "割当", icon: ClipboardList },
   { href: "/admin/routes", label: "ルート確認", icon: MapPin },

@@ -48,7 +48,19 @@ interface RawResponse {
 }
 
 export async function runOcrSpace(imageBuffer: Buffer): Promise<OcrSpaceResult> {
-  const apiKey = process.env.OCR_SPACE_API_KEY ?? "helloworld";
+  const configuredKey = process.env.OCR_SPACE_API_KEY;
+  const isProd = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+
+  // 本番環境ではデモキー fallback を禁止
+  if (isProd && !configuredKey) {
+    throw new Error(
+      "本番環境では OCR_SPACE_API_KEY の設定が必須です。" +
+      "Vercel ダッシュボードの Environment Variables に OCR_SPACE_API_KEY を設定してください。"
+    );
+  }
+
+  // 開発環境のみデモキー fallback（1日500回・1MB以下制限あり）
+  const apiKey = configuredKey ?? "helloworld";
 
   const formData = new FormData();
   const base64 = imageBuffer.toString("base64");
