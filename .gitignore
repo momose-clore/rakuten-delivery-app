@@ -49,3 +49,5 @@ next-env.d.ts
 # Claude Code 設定ファイル
 AGENTS.md
 CLAUDE.md
+*.png
+*.PNG
