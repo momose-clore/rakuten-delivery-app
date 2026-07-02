@@ -1487,6 +1487,7 @@ npm run db:seed:prod
 | 2026-07-01 | CARIO認証確認 | Authorization: Bearer 形式確認済み・コード全て正常・RAKUTEN_APP_API_KEY未設定のみが原因・cario-app-two Vercelダッシュボードでキー確認中 |
 | 2026-07-02 | 予測値v4.1/CARIO準備コミット | 未コミットだった予測値対策v4.1・CARIO実連携準備を品質確認後にコミット（987f28d） |
 | 2026-07-02 | CARIO stale警告UI | GET /api/shifts に connection 情報追加・POST /api/shifts/approve-stale 新設・CarioConnectionBanner（MOCK/REAL_API/LAST_IMPORTED表示・stale赤警告・承認ボタン）・ShiftImportClient統合・APIキー非表示・typecheck/lint/build/prisma全OK |
+| 2026-07-02 | 検証ツール安全化 | extract-structure.js の値サンプル出力（PII漏洩）を除去→値ゼロのschema JSON/keys CSV生成に変更・test-cario.js のレスポンス本文ダンプ除去・APIキー長さ非表示（mapper.ts は未変更） |
 
 ---
 
