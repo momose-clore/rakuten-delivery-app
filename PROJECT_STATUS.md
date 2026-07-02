@@ -1,7 +1,7 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-07-01（CARIO実API認証確認中・APIキー設定待ち）
+> 最終更新: 2026-07-02（CARIO stale警告UI実装完了・APIキー設定待ち）
 
 ---
 
@@ -1485,6 +1485,8 @@ npm run db:seed:prod
 | 2026-06-30 | CARIO実連携準備 | fetchRakutenAssignments・mapRakutenAssignmentsResponse（柔軟構造検出）・getAssignments.ts・RAKUTEN_APP_API_KEY env・shifts/import/route.ts 実API対応・接続モード表示 |
 | 2026-06-30 | CARIO接続テスト | エンドポイント到達確認（HTTP 401）・エラー形式確認（{"error":"unauthorized"}）・test-cario.js / extract-structure.js / scripts/test-cario-live.js 作成・.gitignore追加 |
 | 2026-07-01 | CARIO認証確認 | Authorization: Bearer 形式確認済み・コード全て正常・RAKUTEN_APP_API_KEY未設定のみが原因・cario-app-two Vercelダッシュボードでキー確認中 |
+| 2026-07-02 | 予測値v4.1/CARIO準備コミット | 未コミットだった予測値対策v4.1・CARIO実連携準備を品質確認後にコミット（987f28d） |
+| 2026-07-02 | CARIO stale警告UI | GET /api/shifts に connection 情報追加・POST /api/shifts/approve-stale 新設・CarioConnectionBanner（MOCK/REAL_API/LAST_IMPORTED表示・stale赤警告・承認ボタン）・ShiftImportClient統合・APIキー非表示・typecheck/lint/build/prisma全OK |
 
 ---
 
@@ -1628,8 +1630,8 @@ npm run db:seed:prod
 | `getAssignments.ts` + モックフォールバック | ✅ 実装済み |
 | shifts/import/route.ts 実API対応 | ✅ 実装済み |
 | `RAKUTEN_APP_API_KEY` 環境変数対応 | ✅ .env.example 追加済み |
-| API接続モード表示（MOCK / REAL_API / LAST_IMPORTED） | ✅ 実装済み |
-| stale 時の赤警告表示（UI側） | ⬜ フロントエンド未実装 |
+| API接続モード表示（MOCK / REAL_API / LAST_IMPORTED） | ✅ 実装済み（バックエンド + UIバナー） |
+| stale 時の赤警告表示（UI側） | ✅ 実装済み（CarioConnectionBanner・最終取込日時/対象日/理由・承認ボタン） |
 | 実APIキー設定・本番接続テスト | ⬜ `RAKUTEN_APP_API_KEY` 要設定 |
 | レスポンス構造確認後の mapper 微調整 | ⬜ 実APIレスポンス確認後 |
 

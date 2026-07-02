@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ShiftSummaryCard } from "./ShiftSummaryCard";
-import type { DriverWithShift, ShiftImportResult } from "@/types/shift";
+import { CarioConnectionBanner } from "./CarioConnectionBanner";
+import type { CarioConnectionDisplay, DriverWithShift, ShiftImportResult } from "@/types/shift";
 
 const STATUS_LABEL: Record<string, { label: string; className: string }> = {
   CONFIRMED: { label: "確定",     className: "bg-green-100 text-green-700" },
@@ -17,8 +18,10 @@ export function ShiftImportClient() {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ShiftImportResult | null>(null);
   const [drivers, setDrivers] = useState<DriverWithShift[]>([]);
+  const [connection, setConnection] = useState<CarioConnectionDisplay | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   async function handleImport() {
     setImporting(true);
@@ -35,6 +38,8 @@ export function ShiftImportClient() {
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       setError(body.error ?? "取込に失敗しました");
+      // API 失敗時は前回取込データ（stale）を再取得して警告バナーを表示する
+      await fetchShifts(date);
       return;
     }
 
@@ -43,6 +48,24 @@ export function ShiftImportClient() {
 
     // 取込後にリストを取得
     await fetchShifts(date, summary);
+  }
+
+  async function handleApproveStale() {
+    setApproving(true);
+    setError("");
+    const res = await fetch("/api/shifts/approve-stale", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date }),
+    });
+    setApproving(false);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error ?? "承認に失敗しました");
+      return;
+    }
+    // 承認後の状態を反映するため再取得
+    await fetchShifts(date);
   }
 
   interface ImportSummaryInput {
@@ -66,6 +89,7 @@ export function ShiftImportClient() {
 
     const body = await res.json();
     setDrivers(body.drivers ?? []);
+    setConnection(body.connection ?? null);
 
     if (summary) {
       setResult({
@@ -86,6 +110,7 @@ export function ShiftImportClient() {
     setDate(newDate);
     setResult(null);
     setDrivers([]);
+    setConnection(null);
     setError("");
   }
 
@@ -119,6 +144,15 @@ export function ShiftImportClient() {
           <p className="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>
         )}
       </div>
+
+      {/* CARIO 接続状態バナー */}
+      {connection && (
+        <CarioConnectionBanner
+          connection={connection}
+          onApproveStale={handleApproveStale}
+          approving={approving}
+        />
+      )}
 
       {/* サマリーカード */}
       {result && (
