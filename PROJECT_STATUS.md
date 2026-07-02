@@ -1495,6 +1495,8 @@ npm run db:seed:prod
 | 2026-07-02 | フェーズ4実装 | ドライバーメモ入力（LocationMemoForm→PENDING申請）・取込確認の予測値バッジ（PredictionBadge）・手修正時に field_status_json へ MANUAL_FIXED / MANUAL_EDIT 記録 |
 | 2026-07-02 | フェーズ5実装 | 配送表画像を認証経由化: GET /api/dispatch-images/[id]/file プロキシ新設・OcrReviewClient/ImageHistoryList を proxy URL(unoptimized)に差替え・生Blob URLをブラウザ非露出。typecheck/lint/build/prisma 全OK |
 | 2026-07-02 | 予測値UI仕上げ | ルート画面に座標ステータスバッジ（確定/推定/未・RouteItem.coordinateStatus追加）・ドライバー画面に住所信頼度バッジ（assessAddressConfidence・medium/low時）。typecheck/lint/build 全OK |
+| 2026-07-02 | CARIOキー待機 | ユーザー判断でCARIO有効キー待機モードへ。アプリ側は現グリーン状態を維持（コード/インフラ変更なし）。Blob物理private化は影響大のため未着手 |
+| 2026-07-02 | 手順書のみ作成 | BLOB_PRIVATE_MIGRATION.md 作成（Blob物理private化の影響範囲・実施手順A-D・ロールバック・検証チェックリスト・リスク）。実装/インフラ変更は未実施 |
 
 ---
 
