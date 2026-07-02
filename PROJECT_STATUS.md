@@ -1488,6 +1488,7 @@ npm run db:seed:prod
 | 2026-07-02 | 予測値v4.1/CARIO準備コミット | 未コミットだった予測値対策v4.1・CARIO実連携準備を品質確認後にコミット（987f28d） |
 | 2026-07-02 | CARIO stale警告UI | GET /api/shifts に connection 情報追加・POST /api/shifts/approve-stale 新設・CarioConnectionBanner（MOCK/REAL_API/LAST_IMPORTED表示・stale赤警告・承認ボタン）・ShiftImportClient統合・APIキー非表示・typecheck/lint/build/prisma全OK |
 | 2026-07-02 | 検証ツール安全化 | extract-structure.js の値サンプル出力（PII漏洩）を除去→値ゼロのschema JSON/keys CSV生成に変更・test-cario.js のレスポンス本文ダンプ除去・APIキー長さ非表示（mapper.ts は未変更） |
+| 2026-07-02 | CARIO実キー1回目 | 深井氏提供のcURL例キー（67fc…8b02・64桁）を.env.localに設定→test-cario.js/生cURL両方で HTTP 401 unauthorized。アプリ側正常・キーがサーバー側で認証不可（ダミー/未有効化の疑い）。深井氏へ有効キー確認を依頼中 |
 
 ---
 
