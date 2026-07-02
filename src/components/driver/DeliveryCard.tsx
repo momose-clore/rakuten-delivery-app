@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { CoordinateBadgeType } from "@/types/prediction";
 
 export type DeliveryStatus =
   | "PENDING_OCR" | "REVIEW_REQUIRED" | "ADDRESS_ERROR"
@@ -24,6 +25,7 @@ export interface DeliveryCardItem {
   lng: number | null;
   deliveryStatus: DeliveryStatus;
   mapsUrl?: string;
+  addressNavUrl?: string | null;   // 住所文字列フォールバックURL
   // 住所補正情報（location override）
   entranceMemo?: string | null;
   buildingMemo?: string | null;
@@ -31,6 +33,10 @@ export interface DeliveryCardItem {
   parkingMemo?: string | null;
   cautionMemo?: string | null;
   hasOverride?: boolean;
+  // 予測値バッジ情報
+  coordinateBadge?: CoordinateBadgeType;
+  coordinateStatus?: string | null;
+  coordinateConfidence?: string | null;
 }
 
 interface DeliveryCardProps {
@@ -49,13 +55,24 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 };
 
 const ACTION_BUTTONS: { status: DeliveryStatus; label: string; className: string }[] = [
-  { status: "COMPLETED", label: "✓ 完了",   className: "bg-green-600 hover:bg-green-700 text-white" },
-  { status: "ABSENT",    label: "× 不在",   className: "bg-orange-500 hover:bg-orange-600 text-white" },
-  { status: "RETURNED",  label: "↩ 持戻り", className: "bg-red-500 hover:bg-red-600 text-white" },
+  { status: "COMPLETED", label: "✓ 完了",     className: "bg-green-600 hover:bg-green-700 text-white" },
+  { status: "ABSENT",    label: "× 不在",     className: "bg-orange-500 hover:bg-orange-600 text-white" },
+  { status: "RETURNED",  label: "↩ 持戻り",   className: "bg-red-500 hover:bg-red-600 text-white" },
   { status: "SKIPPED",   label: "→ スキップ", className: "bg-gray-400 hover:bg-gray-500 text-white" },
 ];
 
-const isDone = (s: DeliveryStatus) => ["COMPLETED", "ABSENT", "RETURNED", "SKIPPED"].includes(s);
+const isDone = (s: DeliveryStatus) =>
+  ["COMPLETED", "ABSENT", "RETURNED", "SKIPPED"].includes(s);
+
+/** 座標バッジのラベルとスタイル */
+function coordinateBadgeConfig(badge: CoordinateBadgeType | undefined) {
+  switch (badge) {
+    case "approved":  return { label: "✓ 確認済みピン", className: "bg-green-100 text-green-700" };
+    case "estimated": return { label: "⚠ ピン位置注意", className: "bg-yellow-100 text-yellow-700" };
+    case "missing":   return { label: "📍 住所確認", className: "bg-orange-100 text-orange-700" };
+    default:          return null;
+  }
+}
 
 export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardProps) {
   const [memo, setMemo] = useState(item.memo ?? "");
@@ -64,6 +81,7 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
 
   const statusConfig = STATUS_CONFIG[item.deliveryStatus] ?? STATUS_CONFIG.ASSIGNED;
   const done = isDone(item.deliveryStatus);
+  const coordBadge = coordinateBadgeConfig(item.coordinateBadge);
 
   async function handleStatus(status: DeliveryStatus) {
     setUpdatingStatus(true);
@@ -97,11 +115,18 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
       </div>
 
       <div className="px-4 py-3 space-y-3">
-        {/* 住所 */}
+        {/* 住所 + 予測バッジ */}
         <div>
-          <div className="flex items-center gap-1 mb-0.5">
+          <div className="flex items-center gap-1 mb-0.5 flex-wrap">
             <p className="text-xs text-gray-400">住所</p>
-            {item.hasOverride && <span className="text-xs bg-green-100 text-green-700 px-1 rounded">修正ピンあり</span>}
+            {item.hasOverride && (
+              <span className="text-xs bg-green-100 text-green-700 px-1.5 rounded">修正ピンあり</span>
+            )}
+            {coordBadge && (
+              <span className={`text-xs px-1.5 rounded font-medium ${coordBadge.className}`}>
+                {coordBadge.label}
+              </span>
+            )}
           </div>
           <p className="text-sm font-medium text-gray-900 leading-snug">
             {item.address ?? "住所未登録"}
@@ -111,11 +136,11 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
         {/* 配送メモ（location override） */}
         {(item.entranceMemo || item.buildingMemo || item.nameplateMemo || item.parkingMemo || item.cautionMemo) && (
           <div className="space-y-1">
-            {item.entranceMemo && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🚪 入口: {item.entranceMemo}</p>}
-            {item.buildingMemo && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🏢 建物: {item.buildingMemo}</p>}
+            {item.entranceMemo  && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🚪 入口: {item.entranceMemo}</p>}
+            {item.buildingMemo  && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🏢 建物: {item.buildingMemo}</p>}
             {item.nameplateMemo && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">📋 表札: {item.nameplateMemo}</p>}
-            {item.parkingMemo && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🅿️ 駐車: {item.parkingMemo}</p>}
-            {item.cautionMemo && <p className="text-xs text-red-700 bg-red-50 px-2 py-1 rounded">⚠️ 注意: {item.cautionMemo}</p>}
+            {item.parkingMemo   && <p className="text-xs text-blue-700 bg-blue-50 px-2 py-1 rounded">🅿️ 駐車: {item.parkingMemo}</p>}
+            {item.cautionMemo   && <p className="text-xs text-red-700 bg-red-50 px-2 py-1 rounded">⚠️ 注意: {item.cautionMemo}</p>}
           </div>
         )}
 
@@ -146,7 +171,7 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
           </p>
         )}
 
-        {/* Googleマップボタン */}
+        {/* Googleマップボタン（座標URL）*/}
         {item.mapsUrl && (
           <a
             href={item.mapsUrl}
@@ -161,6 +186,18 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
                 d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
             Googleマップで開く
+          </a>
+        )}
+
+        {/* 住所フォールバックボタン（座標なし or 推定の場合） */}
+        {item.addressNavUrl && item.coordinateBadge !== "approved" && item.coordinateBadge !== "none" && (
+          <a
+            href={item.addressNavUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center w-full py-2 rounded-lg border border-gray-300 text-gray-600 text-xs gap-1 hover:bg-gray-50"
+          >
+            📍 住所でMapを開く（フォールバック）
           </a>
         )}
 

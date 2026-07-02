@@ -51,3 +51,11 @@ AGENTS.md
 CLAUDE.md
 *.png
 *.PNG
+test-cario.js
+extract-structure.js
+response-structure.csv
+scripts/test-cario-live.js
+response-structure.json
+response-keys.csv
+mapper-template.ts
+scripts/test-cario-auth.js

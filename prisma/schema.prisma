@@ -65,15 +65,19 @@ enum ShiftStatus {
 }
 
 model Shift {
-  id        String      @id @default(cuid())
-  driverId  String      @map("driver_id")
-  workDate  DateTime    @map("work_date") @db.Date
-  startTime DateTime?   @map("start_time") @db.Time()
-  endTime   DateTime?   @map("end_time") @db.Time()
-  status    ShiftStatus @default(CONFIRMED)
-  source    String?
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
+  id           String      @id @default(cuid())
+  driverId     String      @map("driver_id")
+  workDate     DateTime    @map("work_date") @db.Date
+  startTime    DateTime?   @map("start_time") @db.Time()
+  endTime      DateTime?   @map("end_time") @db.Time()
+  status       ShiftStatus @default(CONFIRMED)
+  source       String?
+  // CARIO stale 状態管理（v4.1追加）
+  isStale      Boolean     @default(false) @map("is_stale")
+  sourceStatus String?     @default("OK") @map("source_status") // OK | API_FAILURE | USER_APPROVED | MOCK
+  importedAt   DateTime?   @map("imported_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   driver Driver @relation(fields: [driverId], references: [id])
 
@@ -172,6 +176,13 @@ model DeliveryItem {
   ocrNotes          String?        @map("ocr_notes")
   ocrStatus         OcrStatus      @default(PENDING) @map("ocr_status")
   deliveryStatus    DeliveryStatus @default(PENDING_OCR) @map("delivery_status")
+  // 予測値・推定値管理
+  coordinateSource      String?  @map("coordinate_source")       // ValueSource
+  coordinateStatus      String?  @default("ESTIMATED") @map("coordinate_status")  // ValueStatus
+  coordinateConfidence  String?  @map("coordinate_confidence")   // ValueConfidence
+  fieldSourceJson       String?  @map("field_source_json")       // JSON: {dispatchKey: "OCR_RAW", ...}
+  fieldStatusJson       String?  @map("field_status_json")       // JSON: {dispatchKey: "CONFIRMED", ...}
+  predictionWarningsJson String? @map("prediction_warnings_json") // JSON: ["OCR_COUNT_AUTO_FILLED", ...]
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
@@ -244,17 +255,25 @@ model RouteGroup {
 // ─────────────────────────────────────────────
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String   @map("user_id")
-  action     String
-  targetType String   @map("target_type")
-  targetId   String   @map("target_id")
-  beforeData Json?    @map("before_data")
-  afterData  Json?    @map("after_data")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  action        String
+  targetType    String   @map("target_type")
+  targetId      String   @map("target_id")
+  beforeData    Json?    @map("before_data")
+  afterData     Json?    @map("after_data")
+  // 予測値・個人情報匿名化カラム（v4.1追加）
+  targetIdHash  String?  @map("target_id_hash")  // SHA256 HMAC（逆検索不可）
+  fieldName     String?  @map("field_name")       // 操作対象フィールド名
+  source        String?                            // ValueSource
+  status        String?                            // ValueStatus
+  reason        String?                            // 操作理由・警告コード
+  createdAt     DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([action])
+  @@index([fieldName])
   @@map("audit_logs")
 }
 
@@ -386,6 +405,9 @@ model DeliveryLocationOverride {
   createdBy        String?  @map("created_by")
   approvedBy       String?  @map("approved_by")
   approvedAt       DateTime? @map("approved_at")
+  // 予測値管理
+  matchConfidence  String?  @map("match_confidence")  // high|medium|low（マッチ精度）
+  appliedFrom      String?  @map("applied_from")       // ValueSource（どこから適用されたか）
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 

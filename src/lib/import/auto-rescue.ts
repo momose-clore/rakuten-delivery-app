@@ -10,13 +10,35 @@ import { extractAddress } from "@/lib/ocr/extractors/address";
 import { extractCounts } from "@/lib/ocr/extractors/counts";
 import { correctAddressMisreads } from "@/lib/ocr/misread-dictionary";
 import { prisma } from "@/lib/prisma";
+import {
+  buildOcrFieldSources,
+  buildOcrFieldStatuses,
+  buildOcrPredictionWarnings,
+  type OcrAutoRescueFlags,
+} from "@/lib/prediction/metadata";
 
-export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<NormalizedDispatchRow[]> {
-  const rescued: NormalizedDispatchRow[] = [];
+/** 予測値メタデータを保持した拡張行型 */
+export interface RescuedRow extends NormalizedDispatchRow {
+  fieldSourceJson: string;
+  fieldStatusJson: string;
+  predictionWarningsJson: string;
+}
+
+export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<RescuedRow[]> {
+  const rescued: RescuedRow[] = [];
 
   for (const row of rows) {
     const notes = [...row.notes];
     let wasRescued = false;
+
+    const flags: OcrAutoRescueFlags = {
+      dispatchKeyCorrected: false,
+      invoiceNoExtracted:   false,
+      phoneMoved:           false,
+      addressNormalized:    false,
+      totalCountFilled:     false,
+      historyApplied:       false,
+    };
 
     // 1. 配車No再試行
     if (!row.dispatchKey) {
@@ -24,6 +46,7 @@ export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<Nor
       if (retried) {
         (row as NormalizedDispatchRow).dispatchKey = retried;
         notes.push("AUTO_CORRECTED_BY_HISTORY");
+        flags.dispatchKeyCorrected = true;
         wasRescued = true;
       }
     }
@@ -33,6 +56,7 @@ export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<Nor
       const retried = extractInvoiceNo([row.address ?? "", row.memo ?? ""].join(" "));
       if (retried) {
         (row as NormalizedDispatchRow).invoiceNo = retried;
+        flags.invoiceNoExtracted = true;
         wasRescued = true;
       }
     }
@@ -42,9 +66,9 @@ export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<Nor
       const { value, valid } = extractPhone(row.address);
       if (valid && value) {
         (row as NormalizedDispatchRow).customerPhone = value;
-        // 住所から電話番号部分を除去
         const cleaned = extractAddress(row.address.replace(value, "")).value;
         if (cleaned) (row as NormalizedDispatchRow).address = cleaned;
+        flags.phoneMoved = true;
         wasRescued = true;
       }
     }
@@ -54,6 +78,7 @@ export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<Nor
       const { value: corrected, corrected: wasCorrected } = correctAddressMisreads(row.address);
       if (wasCorrected) {
         (row as NormalizedDispatchRow).address = corrected;
+        flags.addressNormalized = true;
         wasRescued = true;
       }
     }
@@ -64,11 +89,12 @@ export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<Nor
         String(row.normalOriconCount),
         String(row.coolerBoxCount),
         String(row.caseCount),
-        ""  // 空 → 自動補完
+        ""
       );
       if (totalAutoFilled && totalCount !== null) {
         (row as NormalizedDispatchRow).totalCount = totalCount;
         notes.push("AUTO_CORRECTED_BY_HISTORY");
+        flags.totalCountFilled = true;
         wasRescued = true;
       }
     }
@@ -82,6 +108,7 @@ export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<Nor
         if (pattern && pattern.usageCount >= 2) {
           (row as NormalizedDispatchRow).dispatchKey = pattern.afterValue;
           if (!notes.includes("AUTO_CORRECTED_BY_HISTORY")) notes.push("AUTO_CORRECTED_BY_HISTORY");
+          flags.historyApplied = true;
           wasRescued = true;
         }
       } catch { /* ignore */ }
@@ -91,12 +118,21 @@ export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<Nor
     const finalNotes = notes.filter((n, i, a) => a.indexOf(n) === i);
     const criticalMissing = !row.dispatchKey || !row.address;
     const confidence = criticalMissing ? "low" : finalNotes.length === 0 ? "high" : "medium";
+    const finalNotesFull = criticalMissing ? [...finalNotes, "NEEDS_REVIEW"] : finalNotes;
+
+    // 8. 予測値メタデータを構築
+    const fieldSources = buildOcrFieldSources(wasRescued, flags);
+    const fieldStatuses = buildOcrFieldStatuses(confidence, wasRescued, finalNotesFull);
+    const warnings = buildOcrPredictionWarnings(wasRescued, flags, confidence);
 
     rescued.push({
       ...row,
-      notes: criticalMissing ? [...finalNotes, "NEEDS_REVIEW"] : finalNotes,
+      notes: finalNotesFull,
       confidence,
       autoRescued: wasRescued,
+      fieldSourceJson:        JSON.stringify(fieldSources),
+      fieldStatusJson:        JSON.stringify(fieldStatuses),
+      predictionWarningsJson: warnings.length > 0 ? JSON.stringify(warnings) : "[]",
     });
   }
 

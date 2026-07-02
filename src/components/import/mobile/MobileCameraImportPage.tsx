@@ -23,7 +23,6 @@ export function MobileCameraImportPage() {
   const [quality, setQuality] = useState<{ level: string; score: number; warnings: string[]; blockingReasons: string[]; canProceedToOcr: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [batchId, setBatchId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -73,8 +72,7 @@ export function MobileCameraImportPage() {
       return;
     }
 
-    const body = await res.json();
-    setBatchId(body.batchId);
+    await res.json();
     setStep("done");
   }
 

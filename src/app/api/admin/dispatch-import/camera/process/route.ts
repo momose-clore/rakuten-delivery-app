@@ -4,13 +4,11 @@ import { storageProvider } from "@/lib/storage";
 import { preprocessImageForOcr } from "@/lib/ocr/image-preprocess";
 import { runOcrSpace } from "@/lib/ocr/ocrspace";
 import { applyL1MProfile } from "@/lib/import/profiles/l1m-cargo-list-profile";
-import { autoRescueRows } from "@/lib/import/auto-rescue";
 import { saveImportBatch, calcBatchStats } from "@/lib/import/pipeline";
 import { computeImageHash } from "@/lib/ocr/hash";
 import { checkDailyLimit, logOcrUsage } from "@/lib/ocr/usage";
-import type { CaptureMode, NormalizedDispatchRow } from "@/types/import";
+import type { CaptureMode } from "@/types/import";
 import { isL1MLayout } from "@/lib/import/profiles/l1m-layout-detector";
-import { extractL1MMetadata } from "@/lib/import/profiles/l1m-metadata-extractor";
 
 export const maxDuration = 60;
 

@@ -55,4 +55,6 @@ export interface OverrideInfo {
   accessMemo: string | null;
   cautionMemo: string | null;
   parkingMemo: string | null;
+  /** 履歴マッチの精度（高精度な完全一致=high / 部分一致=medium） */
+  matchConfidence?: "high" | "medium" | "low" | null;
 }

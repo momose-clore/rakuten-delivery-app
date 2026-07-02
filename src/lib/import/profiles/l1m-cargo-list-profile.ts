@@ -3,7 +3,7 @@
  * OCR結果から L1M 専用の高精度解析を実行する。
  */
 import type { OcrWord } from "@/lib/ocr/ocrspace";
-import type { NormalizedDispatchRow, ImportBatchResult } from "@/types/import";
+import type { ImportBatchResult } from "@/types/import";
 import { isL1MLayout } from "./l1m-layout-detector";
 import { extractL1MMetadata } from "./l1m-metadata-extractor";
 import { parseL1MRowBlocks } from "./l1m-row-block-parser";
@@ -31,7 +31,6 @@ export async function applyL1MProfile(input: L1MOcrInput): Promise<ImportBatchRe
   const rescuedRows = await autoRescueRows(rawRows);
 
   // 右上総数との整合チェック
-  const notes = rescuedRows.flatMap((r) => r.notes);
   if (meta.summaryTotalCount && meta.summaryTotalCount > 0) {
     const itemTotal = rescuedRows.reduce((s, r) => s + r.totalCount, 0);
     if (itemTotal !== meta.summaryTotalCount) {

@@ -5,6 +5,7 @@
 import { prisma } from "@/lib/prisma";
 import { buildLookupKey } from "./address-normalizer";
 import type { OverrideInfo } from "@/types/location";
+import { buildApprovedOverrideCoordinateMeta } from "@/lib/prediction/metadata";
 
 /** 住所に対応する承認済みオーバーライドを検索 */
 export async function findApprovedOverride(address: string): Promise<OverrideInfo | null> {
@@ -19,9 +20,14 @@ export async function findApprovedOverride(address: string): Promise<OverrideInf
   });
 
   if (exact) {
+    const meta = buildApprovedOverrideCoordinateMeta();
     await prisma.deliveryLocationOverride.update({
       where: { id: exact.id },
-      data: { usageCount: { increment: 1 } },
+      data: {
+        usageCount: { increment: 1 },
+        matchConfidence: "high",
+        appliedFrom: meta.coordinateSource,
+      },
     });
     return mapToOverrideInfo(exact);
   }

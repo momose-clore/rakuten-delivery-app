@@ -27,6 +27,16 @@
 - 複数件ルートは補助機能・4件単位で分割
 - 配送管理は Google Maps に任せない（アプリ側の `route_order` を正とする）
 
+## 予測値・推定値の誤適用対策（絶対方針）
+- **予測値は確定値として扱わない**（OCR生値・自動救済値・Google Geocoding座標は推定値）
+- **Google Geocoding座標は初期状態では `ESTIMATED`**（`coordinateStatus`）
+- **管理者承認済み override のみ `ADMIN_APPROVED`** → 確定座標扱い
+- **`ADMIN_APPROVED` / `MANUAL_FIXED` は自動処理（Geocode再実行・OCR再実行）で上書き禁止**
+- source / confidence / status / warning を値ごとに管理する（`src/types/prediction.ts`）
+- `audit_logs` に氏名・電話番号・住所・伝票Noの値を保存しない（fieldName / source / status のみ）
+- 低信頼値・推定値はUIバッジで明示する（「⚠ ピン位置注意」「住所確認」等）
+- 住所コピーfallback URL（住所文字列ナビ）は常に保持する
+
 ## セキュリティ
 - 氏名・電話番号・住所・伝票Noを console.log しない
 - ドキュメントに実パスワード・APIキー・DATABASE_URL を書かない（マスク必須）

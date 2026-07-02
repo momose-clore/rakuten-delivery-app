@@ -3,7 +3,8 @@
  * PDF/CSV/Excel/貼り付け/画像OCR/スマホカメラOCR → NormalizedDispatchRow[]
  */
 import { prisma } from "@/lib/prisma";
-import type { NormalizedDispatchRow, ImportBatchResult, DispatchImportSource } from "@/types/import";
+import type { NormalizedDispatchRow, ImportBatchResult } from "@/types/import";
+import type { RescuedRow } from "@/lib/import/auto-rescue";
 
 /** 正規化済み行をDBに保存する共通処理 */
 export async function saveImportBatch(
@@ -46,6 +47,7 @@ export async function saveImportBatch(
 
   // delivery_items を一括 INSERT
   for (const row of result.rows) {
+    const rescued = row as RescuedRow;
     const item = await prisma.deliveryItem.create({
       data: {
         dispatchImageId: dispatchImage.id,
@@ -66,6 +68,10 @@ export async function saveImportBatch(
         ocrNotes: row.notes.length > 0 ? JSON.stringify(row.notes) : null,
         ocrStatus: row.notes.length > 0 ? "REVIEW_REQUIRED" : "PENDING",
         deliveryStatus: "PENDING_OCR",
+        // 予測値メタデータ
+        fieldSourceJson:        rescued.fieldSourceJson ?? null,
+        fieldStatusJson:        rescued.fieldStatusJson ?? null,
+        predictionWarningsJson: rescued.predictionWarningsJson ?? null,
       },
     });
 

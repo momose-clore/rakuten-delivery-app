@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 }
 
 /** GET: 正解セット一覧 */
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const session = await auth();
   if (!session || session.user.role !== "ADMIN") return NextResponse.json({ error: "権限がありません" }, { status: 403 });
 
