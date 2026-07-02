@@ -79,6 +79,7 @@ export async function GET(req: NextRequest) {
       totalCount: a.deliveryItem.totalCount,
       memo: a.deliveryItem.memo,
       deliveryStatus: a.deliveryItem.deliveryStatus,
+      coordinateStatus: a.deliveryItem.coordinateStatus,
     };
     driverMap.get(a.driverId)!.items.push(item);
   }

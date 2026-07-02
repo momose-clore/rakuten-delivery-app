@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { CoordinateBadgeType } from "@/types/prediction";
+import { assessAddressConfidence } from "@/lib/address/address-confidence";
 import { LocationMemoForm } from "./LocationMemoForm";
 
 export type DeliveryStatus =
@@ -84,6 +85,18 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
   const done = isDone(item.deliveryStatus);
   const coordBadge = coordinateBadgeConfig(item.coordinateBadge);
 
+  // 住所テキストの信頼度（medium/low のときだけ注意バッジを出す）
+  const addressConfidence = assessAddressConfidence({
+    address: item.address,
+    lat: item.lat,
+    lng: item.lng,
+    hasApprovedOverride: item.hasOverride,
+  }).confidence;
+  const addressConfidenceBadge =
+    addressConfidence === "low"    ? { label: "⚠ 住所要確認", className: "bg-red-100 text-red-700" }
+    : addressConfidence === "medium" ? { label: "住所確認推奨", className: "bg-amber-100 text-amber-700" }
+    : null;
+
   async function handleStatus(status: DeliveryStatus) {
     setUpdatingStatus(true);
     await onStatusChange(item.deliveryItemId, status);
@@ -126,6 +139,11 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
             {coordBadge && (
               <span className={`text-xs px-1.5 rounded font-medium ${coordBadge.className}`}>
                 {coordBadge.label}
+              </span>
+            )}
+            {addressConfidenceBadge && (
+              <span className={`text-xs px-1.5 rounded font-medium ${addressConfidenceBadge.className}`}>
+                {addressConfidenceBadge.label}
               </span>
             )}
           </div>

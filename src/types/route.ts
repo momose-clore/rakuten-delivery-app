@@ -13,6 +13,8 @@ export interface RouteItem {
   totalCount: number | null;
   memo: string | null;
   deliveryStatus: string;
+  /** 座標の状態（ESTIMATED / ADMIN_APPROVED / MANUAL_FIXED）予測値バッジ用 */
+  coordinateStatus?: string | null;
 }
 
 export interface RouteGroupInfo {

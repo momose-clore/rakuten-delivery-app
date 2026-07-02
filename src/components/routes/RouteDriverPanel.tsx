@@ -121,12 +121,8 @@ export function RouteDriverPanel({ driver, onLoadingModeChange }: Props) {
               </td>
               <td className="px-3 py-2 text-gray-700">{item.totalCount ?? "—"}</td>
               <td className="px-3 py-2 text-gray-500">{item.memo ?? ""}</td>
-              <td className="px-3 py-2">
-                {item.lat !== null ? (
-                  <span className="text-green-600">✓</span>
-                ) : (
-                  <span className="text-orange-500">未</span>
-                )}
+              <td className="px-3 py-2 whitespace-nowrap">
+                <CoordinateStatusBadge lat={item.lat} coordinateStatus={item.coordinateStatus} />
               </td>
             </tr>
           ))}
@@ -134,4 +130,22 @@ export function RouteDriverPanel({ driver, onLoadingModeChange }: Props) {
       </table>
     </div>
   );
+}
+
+/** 座標の状態バッジ（確定ピン / 推定ピン / 未取得） */
+function CoordinateStatusBadge({
+  lat,
+  coordinateStatus,
+}: {
+  lat: number | null;
+  coordinateStatus?: string | null;
+}) {
+  if (lat === null) {
+    return <span className="text-orange-500">未</span>;
+  }
+  if (coordinateStatus === "ADMIN_APPROVED" || coordinateStatus === "MANUAL_FIXED") {
+    return <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-700">✓確定</span>;
+  }
+  // ESTIMATED（Google Geocoding 推定）またはメタなし＝推定扱い
+  return <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">⚠推定</span>;
 }
