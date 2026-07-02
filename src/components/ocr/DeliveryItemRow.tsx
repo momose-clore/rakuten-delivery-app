@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { DeliveryItem } from "@/types/dispatch";
 import { ReviewReasonBadge, parseReviewReasons, rowHighlight } from "./ReviewReasonBadge";
+import { PredictionBadge } from "./PredictionBadge";
 
 interface DeliveryItemRowProps {
   item: DeliveryItem;
@@ -109,7 +110,13 @@ export function DeliveryItemRow({ item, dispatchImageId, onSaved }: DeliveryItem
       {field("totalCount", "総数", "number")}
       {field("memo", "備考")}
       <td className="px-3 py-2">
-        <ReviewReasonBadge reasons={reasons} />
+        <div className="flex flex-col gap-1">
+          <ReviewReasonBadge reasons={reasons} />
+          <PredictionBadge
+            fieldStatusJson={item.fieldStatusJson}
+            predictionWarningsJson={item.predictionWarningsJson}
+          />
+        </div>
       </td>
       <td className="px-3 py-2 whitespace-nowrap">
         {editing ? (

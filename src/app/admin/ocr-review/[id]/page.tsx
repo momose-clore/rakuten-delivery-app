@@ -49,6 +49,9 @@ export default async function OcrReviewPage({ params }: Props) {
     memo: i.memo,
     ocrNotes: i.ocrNotes,
     ocrStatus: i.ocrStatus,
+    fieldStatusJson: i.fieldStatusJson,
+    fieldSourceJson: i.fieldSourceJson,
+    predictionWarningsJson: i.predictionWarningsJson,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
   }));

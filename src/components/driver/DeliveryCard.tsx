@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { CoordinateBadgeType } from "@/types/prediction";
+import { LocationMemoForm } from "./LocationMemoForm";
 
 export type DeliveryStatus =
   | "PENDING_OCR" | "REVIEW_REQUIRED" | "ADDRESS_ERROR"
@@ -235,6 +236,11 @@ export function DeliveryCard({ item, onStatusChange, onMemoSave }: DeliveryCardP
               {savingMemo ? "…" : "保存"}
             </button>
           </div>
+        )}
+
+        {/* 配送メモ申請（入口/建物/表札/駐車/注意 → 管理者承認フロー） */}
+        {!done && (
+          <LocationMemoForm deliveryItemId={item.deliveryItemId} address={item.address} />
         )}
       </div>
     </div>

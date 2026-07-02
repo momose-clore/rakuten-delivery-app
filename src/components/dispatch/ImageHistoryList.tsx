@@ -94,9 +94,10 @@ export function ImageHistoryList({ refreshKey }: ImageHistoryListProps) {
                 <td className="px-4 py-3">
                   <div className="relative w-16 h-10 rounded overflow-hidden bg-gray-100 border border-gray-200">
                     <Image
-                      src={img.imageUrl}
+                      src={`/api/dispatch-images/${img.id}/file`}
                       alt="配車表"
                       fill
+                      unoptimized
                       className="object-cover"
                       sizes="64px"
                     />

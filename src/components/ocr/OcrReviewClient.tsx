@@ -102,9 +102,10 @@ export function OcrReviewClient({ dispatchImage, initialItems }: OcrReviewClient
           <p className="text-xs font-medium text-gray-500 mb-2">元画像</p>
           <div className="relative w-full aspect-[3/4] rounded overflow-hidden bg-gray-100">
             <Image
-              src={dispatchImage.imageUrl}
+              src={`/api/dispatch-images/${dispatchImage.id}/file`}
               alt="配車表"
               fill
+              unoptimized
               className="object-contain"
               sizes="380px"
             />

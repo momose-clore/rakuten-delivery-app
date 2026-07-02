@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
 import { revalidateDeliveryItem } from "@/lib/ocr/revalidate";
 import { recordItemCorrections } from "@/lib/ocr/correction";
+import { parseFieldStatusJson, parseFieldSourceJson, OCR_DERIVED_FIELDS } from "@/lib/prediction/metadata";
+import type { FieldStatusMap, FieldSourceMap } from "@/types/prediction";
 import type { DeliveryItem } from "@/types/dispatch";
 
 // 編集を許可するフィールドの whitelist
@@ -114,6 +116,18 @@ export async function PATCH(
 
   const revalidated = revalidateDeliveryItem(merged, siblingsMapped);
 
+  // 手動修正したフィールドは予測メタデータを MANUAL_FIXED / MANUAL_EDIT に更新
+  // （以降の Geocode 再実行・OCR 再実行で上書きされない確定値として保護される）
+  const ocrFields = OCR_DERIVED_FIELDS as readonly string[];
+  const statusMap: FieldStatusMap = parseFieldStatusJson(existing.fieldStatusJson);
+  const sourceMap: FieldSourceMap = parseFieldSourceJson(existing.fieldSourceJson);
+  for (const field of Object.keys(updates)) {
+    if (ocrFields.includes(field)) {
+      statusMap[field] = "MANUAL_FIXED";
+      sourceMap[field] = "MANUAL_EDIT";
+    }
+  }
+
   const updated = await prisma.deliveryItem.update({
     where: { id: itemId },
     data: {
@@ -124,6 +138,8 @@ export async function PATCH(
       dispatchKey: revalidated.dispatchKey,
       ocrNotes: revalidated.ocrNotes,
       ocrStatus: revalidated.ocrStatus,
+      fieldStatusJson: JSON.stringify(statusMap),
+      fieldSourceJson: JSON.stringify(sourceMap),
     },
   });
 

@@ -14,6 +14,7 @@ import {
   LogOut,
   FolderInput,
   MapPinOff,
+  BarChart3,
 } from "lucide-react";
 
 const navItems = [
@@ -25,6 +26,7 @@ const navItems = [
   { href: "/admin/assignments", label: "割当", icon: ClipboardList },
   { href: "/admin/routes", label: "ルート確認", icon: MapPin },
   { href: "/admin/location-overrides", label: "住所補正", icon: MapPinOff },
+  { href: "/admin/import-accuracy", label: "取込精度", icon: BarChart3 },
   { href: "/admin/progress", label: "配送進捗", icon: TruckIcon },
 ];
 

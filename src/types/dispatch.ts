@@ -49,6 +49,10 @@ export interface DeliveryItem {
   memo: string | null;
   ocrNotes: string | null; // JSON: ReviewReason[]
   ocrStatus: OcrStatus;
+  // 予測値メタデータ（JSON文字列 / 旧データは null）
+  fieldStatusJson?: string | null;       // JSON: FieldStatusMap
+  fieldSourceJson?: string | null;        // JSON: FieldSourceMap
+  predictionWarningsJson?: string | null; // JSON: AnyWarning[]
   createdAt: string;
   updatedAt: string;
 }
