@@ -481,3 +481,21 @@ model ExtraVehicleRequest {
   @@index([requestDate])
   @@map("extra_vehicle_requests")
 }
+
+// ドライバー現在地（GPS リアルタイム表示用）
+// 1ドライバー1行（現在地を upsert で更新／履歴は持たない＝サイズ有界）。
+// あえて Driver への relation を張らず driverId を主キー文字列とし、
+// 既存 Driver モデルを編集しない（並行作業との衝突回避）。
+// ブラウザ標準 Geolocation で取得（Google Maps 有料APIは不使用・課金なし）。
+model DriverLocation {
+  driverId   String   @id @map("driver_id")     // Driver.id（relation は張らない）
+  lat        Float
+  lng        Float
+  accuracy   Float?                             // 位置精度(m)
+  heading    Float?                             // 進行方位(度)
+  speed      Float?                             // 速度(m/s)
+  recordedAt DateTime @map("recorded_at")       // 端末が測位した時刻
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("driver_locations")
+}

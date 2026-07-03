@@ -13,6 +13,7 @@ import { ChevronRight } from "lucide-react";
 const NAVY = "#26324F";
 
 const LINKS = [
+  { href: "/admin-preview", title: "管理者画面（美女木デポ 運行管制案）", desc: "上部ナビ＋メトリクスカード＋号車一覧（W1〜W6進捗）＋地図。実データ接続前のレイアウト確認用", tag: "NEW" },
   { href: "/driver-lab", title: "クルー画面（新デザイン案）", desc: "デザイン部門の統合案。Next Stopヒーロー＋下部アクションバー", tag: "おすすめ" },
   { href: "/driver-preview", title: "クルー画面（ハブ案）", desc: "到着連絡/カメラ/フォロー＋W1〜W6進捗＋フォロー中の配送", tag: "" },
 ];
