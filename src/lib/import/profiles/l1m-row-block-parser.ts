@@ -88,15 +88,25 @@ export function parseL1MRowBlocks(
     prevTop = sorted[i].top;
   }
 
+  // 配車No は「{号車}-{連番}」。第1部が号車(vehicleNo)と一致するものだけ採用し、
+  // 日付(例 06-21)やサマリー値の誤検出でできる偽ブロックを排除する。
+  const expectedVehicle = meta.vehicleNo
+    ? parseInt(correctDigitMisreads(toHalfWidth(meta.vehicleNo)).replace(/[^\d]/g, ""), 10)
+    : NaN;
+
   // 配車No を含む行を「ブロック開始」として検出（分割・ハイフン欠落は reconstructDispatchKey で復元）
   const blockStarts: number[] = [];
   const blockKeys: string[] = [];
   for (const cl of clusters) {
     const key = reconstructDispatchKey(cl.map((i) => sorted[i]));
-    if (key) {
-      blockStarts.push(cl[0]);
-      blockKeys.push(key);
+    if (!key) continue;
+    // 号車が判っている場合は第1部一致で絞り込み（日付誤検出などを除外）
+    if (Number.isFinite(expectedVehicle)) {
+      const head = parseInt(key.split("-")[0].replace(/[^\d]/g, ""), 10);
+      if (head !== expectedVehicle) continue;
     }
+    blockStarts.push(cl[0]);
+    blockKeys.push(key);
   }
 
   if (blockStarts.length === 0) return [];
@@ -150,7 +160,18 @@ export function parseL1MRowBlocks(
             .map((w) => toHalfWidth(w.text))
             .join("")
         : "";
-    const { value: phone, valid: phoneValid } = extractPhone(phoneStr);
+    let { value: phone, valid: phoneValid } = extractPhone(phoneStr);
+    // 連絡先ラベルが読めない行のフォールバック：ブロック中央語からハイフン付き電話書式を探す
+    // （0X-XXXX-XXXX / 0X0-XXXX-XXXX。ハイフン必須なので15桁伝票Noには誤マッチしない）。
+    if (!phoneValid) {
+      const joined = centerWords.map((w) => toHalfWidth(w.text)).join(" ").replace(/\s*-\s*/g, "-");
+      const m = joined.match(/0\d{1,3}-\d{2,4}-\d{3,4}/);
+      if (m) {
+        const r = extractPhone(m[0]);
+        phone = r.value;
+        phoneValid = r.valid;
+      }
+    }
 
     // 氏名（「氏名」ラベル後の文字列）
     const nameMatch = centerText.match(/氏名[\s:：]*([\p{L}ぁ-んァ-ン一-龠\s]{2,20})/u);
@@ -176,7 +197,24 @@ export function parseL1MRowBlocks(
     } else {
       rawAddress = centerText;
     }
-    const { value: address, suspect: addressSuspect } = extractAddress(rawAddress);
+    let { value: address, suspect: addressSuspect } = extractAddress(rawAddress);
+    // フォールバック：住所が空/地名なしなら、ブロック中央語から郵便番号or都道府県以降を住所として拾う
+    // （連絡先・住所ラベルが両方読めない行の救済。元データに住所が無ければ空のまま＝要確認で正しく残る）。
+    if (!address || !/[都道府県区市町村]/.test(address)) {
+      const joined = centerWords
+        .slice()
+        .sort((a, b) => a.top - b.top || a.left - b.left)
+        .map((w) => w.text)
+        .join("");
+      const m = joined.match(/(〒?\s*\d{3}-?\d{4}[\s\S]*|[都道府県][\s\S]*)$/);
+      if (m) {
+        const r = extractAddress(m[1]);
+        if (r.value && r.value.length > (address?.length ?? 0)) {
+          address = r.value;
+          addressSuspect = r.suspect;
+        }
+      }
+    }
 
     // 数量：各数値を実測の列中心（常温/クーラー/ケース/箱計）の最寄りに割り当てる。
     // 単純な左→右順だと空セル(0/空欄)で列がズレるため、x座標で列を決める。
