@@ -88,10 +88,33 @@
 
 ### 改善指示（担当別）
 - **→ β（最優先）**：まず **①GPS/レイアウト統合**を本番管理画面へ。`/admin-preview`・`/admin/live-map` を確認し、α実装ファイルは触らず統合。次に **②/admin/security**。着手可否・順序を「α→β依頼」節 or β節に1行で返信。
-- **→ α（重要・本番反映リスク）**：GPS機能一式（`admin/live-map`, `api/driver/location`, `api/admin/driver-locations`, `components/map`, `components/driver/DriverLocationTracker`, `public/vendor/leaflet`, schema+migration, `driver/layout.tsx`）を**パス明示で早めにコミット**。放置すると他ターミナルの `git add -A` に巻き込まれる＆本番 migrate deploy に乗らず GPS API が500になる。
-- **→ 増便申請担当**：CARIO連携方式を確定（pull方式）。**γ が受け皿の read-only 提供IFを用意可能**（例 `GET /api/external/extra-vehicle-requests?status=pending` を CARIO がpull）。要望を「α受付ボックス」or この節に追記してくれれば γ が実装する。
+- **→ α（重要・本番反映リスク｜γ検証済み）**：GPS機能一式を**パス明示で早めにコミット**。**検証結果：`driver_locations` migration は未コミット（git未追跡）＝本番schema(HEAD)にテーブル無し。このままだと GPS 系API(`/api/driver/location`,`/api/admin/driver-locations`)は本番で500**。commit すれば Vercel の `prisma migrate deploy` で自動反映される。放置は `git add -A` 巻き込み事故＋本番500の二重リスク。
+- **→ 増便申請担当**：CARIO連携方式を確定（pull方式）。**前提OK：`extra_vehicle_requests` はコミット済migration＝本番反映済み**（γ検証済み）。γ が受け皿の read-only 提供IFを実装可能（CARIOがpull）。**ただし今 `src/lib/cario/extra-vehicle.ts` 等をあなたが作業中のため、γは衝突回避で着手待ち。** 設計（パス・認証方式・返すフィールド）を確定してこの節に書いてくれれば、γが CARIO側IF（`api/cario/` 名前空間・read-only・トークン認証）を実装する。認証トークンの実値は CARIOチームとの共有が必要（課金なし）。
 - **→ riku（人間判断待ち＝課金/法務）**：H5 `xlsx` は CDN版差替なら**無料・非課金**（GO出れば γ/担当が実施可）。privacy法務情報・warehouse実座標は値の確定が要る。
 - **→ γ（自分・自走）**：(a) `mapper.ts` の stale TODO 掃除、(b) 上記 増便申請用CARIO IF を要望あれば実装、(c) 全体連携チェック継続。
+
+## 🖥️ ターミナル稼働表示（各ターミナルの起動状況を可視化・2026-07-03 γ導入）
+
+各ターミナルの「稼働中マーク＋名前」を見えるようにした。**α/β は下記を1回セットアップして。**
+
+### セットアップ（各ターミナルで1回）
+起動前に自分のIDを環境変数で設定してから claude を起動:
+```bash
+export TERMINAL_ID=alpha   # β は beta / γ は gamma
+claude
+```
+→ ステータスラインに `🟢 α (アルファ)｜役割` が常時表示され、**開いている間は自動で稼働記録**される（稼働ボードで🟢）。
+
+### 稼働ボード（全ターミナルの起動状況を一覧）
+```bash
+node scripts/terminals.mjs           # 1回表示
+node scripts/terminals.mjs --watch   # 5秒ごと更新
+```
+🟢稼働中(10分以内) / 🟡アイドル(60分以内) / ⚪停止?・未報告 を名前・役割つきで表示。
+
+- 手動で稼働を刻む場合: `node scripts/heartbeat.mjs <alpha|beta|gamma> "作業内容"`
+- 仕組み: 名簿=`docs/terminals.json`（静的）、稼働=`.claude/heartbeats/<id>`（各自が書く・gitignore・競合しない）、設定=`.claude/settings.json` の statusLine。
+- 役割・表示名を変えたい時は `docs/terminals.json` を編集。
 
 ## 運用上の注意（共有事項）
 

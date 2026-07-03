@@ -1,0 +1,17 @@
+{
+  "_note": "ターミナル名簿（静的）。稼働状況は各ターミナルが .claude/heartbeats/<id> に自動記録（ステータスライン or heartbeat.mjs）。表示は node scripts/terminals.mjs。",
+  "terminals": {
+    "alpha": {
+      "name": "α (アルファ)",
+      "role": "セキュリティ監視・レポート / レイアウト・GPS地図"
+    },
+    "beta": {
+      "name": "β (ベータ)",
+      "role": "管理画面UI・配車"
+    },
+    "gamma": {
+      "name": "γ (ガンマ)",
+      "role": "CARIO/API連携・全体連携チェック"
+    }
+  }
+}

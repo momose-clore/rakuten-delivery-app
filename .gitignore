@@ -63,3 +63,12 @@ scripts/test-cario-auth.js
 # ブランドアセットは *.png 除外の例外として追跡する
 !public/brand/
 !public/brand/*.png
+
+# アプリアイコン（PWA / スマホ「ホーム画面に追加」）は *.png 除外の例外として追跡する
+!/src/app/apple-icon.png
+!/src/app/icon.png
+!/public/icons/
+!/public/icons/*.png
+
+# ターミナル稼働ハートビート（各自のランタイム状態・共有しない）
+.claude/heartbeats/
