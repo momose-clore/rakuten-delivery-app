@@ -2,9 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
 
-const ALLOWED_STATUSES = ["COMPLETED", "ABSENT", "RETURNED", "SKIPPED"] as const;
-type AllowedStatus = (typeof ALLOWED_STATUSES)[number];
-
+/** クルーが「誤配なし」を確認/解除する（本人担当のみ） */
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -17,16 +15,9 @@ export async function PATCH(
   if (!driverId) return NextResponse.json({ error: "ドライバー情報が見つかりません" }, { status: 403 });
 
   const { id: deliveryItemId } = await params;
-  const { status } = await req.json();
+  const { value } = (await req.json()) as { value?: boolean };
+  const checked = value !== false; // 既定は true（確認）
 
-  if (!ALLOWED_STATUSES.includes(status)) {
-    return NextResponse.json(
-      { error: `status は ${ALLOWED_STATUSES.join(" / ")} のいずれかを指定してください` },
-      { status: 400 }
-    );
-  }
-
-  // 本人担当 or 応援（フォロー）中かを DB 側で確認
   const [assignment, follow] = await Promise.all([
     prisma.assignment.findFirst({ where: { deliveryItemId, driverId } }),
     prisma.deliveryFollow.findFirst({ where: { deliveryItemId, driverId } }),
@@ -37,8 +28,8 @@ export async function PATCH(
 
   await prisma.deliveryItem.update({
     where: { id: deliveryItemId },
-    data: { deliveryStatus: status as AllowedStatus },
+    data: { noMisdelivery: checked, noMisdeliveryAt: checked ? new Date() : null },
   });
 
-  return NextResponse.json({ success: true, deliveryItemId, status });
+  return NextResponse.json({ success: true, deliveryItemId, noMisdelivery: checked });
 }

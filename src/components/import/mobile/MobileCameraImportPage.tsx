@@ -15,7 +15,17 @@ const GUIDE_MESSAGES = [
   "手ブレしないように固定して撮影してください",
 ];
 
-export function MobileCameraImportPage() {
+export function MobileCameraImportPage({
+  doneHref = "/admin/ocr-review",
+  doneLabel = "確認画面へ →",
+  doneNote = "OCR確認画面で内容を確認してください",
+  backHref,
+}: {
+  doneHref?: string;
+  doneLabel?: string;
+  doneNote?: string;
+  backHref?: string;
+} = {}) {
   const [step, setStep] = useState<Step>("guide");
   const [captureMode, setCaptureMode] = useState<CaptureMode>("paper");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -183,10 +193,15 @@ export function MobileCameraImportPage() {
     <div className="max-w-md mx-auto space-y-4 px-4 py-12 text-center">
       <p className="text-3xl">✅</p>
       <p className="text-xl font-bold text-gray-900">取込完了</p>
-      <p className="text-sm text-gray-500">OCR確認画面で内容を確認してください</p>
-      <Link href="/admin/ocr-review" className="block w-full py-3 bg-blue-600 text-white rounded-xl font-medium">
-        確認画面へ →
+      <p className="text-sm text-gray-500">{doneNote}</p>
+      <Link href={doneHref} className="block w-full py-3 bg-blue-600 text-white rounded-xl font-medium">
+        {doneLabel}
       </Link>
+      {backHref && (
+        <Link href={backHref} className="block w-full py-3 border border-gray-300 text-gray-600 rounded-xl font-medium">
+          ホームに戻る
+        </Link>
+      )}
     </div>
   );
 }

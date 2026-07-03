@@ -50,8 +50,26 @@ model Driver {
   shifts      Shift[]
   assignments Assignment[]
   routeGroups RouteGroup[]
+  dayReports  DriverDayReport[]
+  follows     DeliveryFollow[]
 
   @@map("drivers")
+}
+
+// 倉庫到着時刻・終了報告（1ドライバー・1日単位）
+model DriverDayReport {
+  id                 String    @id @default(cuid())
+  driverId           String    @map("driver_id")
+  workDate           DateTime  @map("work_date") @db.Date
+  warehouseArrivalAt DateTime? @map("warehouse_arrival_at")
+  finishedReportedAt DateTime? @map("finished_reported_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  driver Driver @relation(fields: [driverId], references: [id])
+
+  @@unique([driverId, workDate], name: "driverId_workDate")
+  @@map("driver_day_reports")
 }
 
 // ─────────────────────────────────────────────
@@ -183,13 +201,31 @@ model DeliveryItem {
   fieldSourceJson       String?  @map("field_source_json")       // JSON: {dispatchKey: "OCR_RAW", ...}
   fieldStatusJson       String?  @map("field_status_json")       // JSON: {dispatchKey: "CONFIRMED", ...}
   predictionWarningsJson String? @map("prediction_warnings_json") // JSON: ["OCR_COUNT_AUTO_FILLED", ...]
+  // 誤配なし確認（クルーが配達時に確認）
+  noMisdelivery     Boolean        @default(false) @map("no_misdelivery")
+  noMisdeliveryAt   DateTime?      @map("no_misdelivery_at")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
   dispatchImage DispatchImage @relation(fields: [dispatchImageId], references: [id])
   assignments   Assignment[]
+  follows       DeliveryFollow[]
 
   @@map("delivery_items")
+}
+
+// フォロー（応援）：元ドライバーを残したまま別ドライバーが手伝う二重ハンドラ（1明細1ドライバー1件）
+model DeliveryFollow {
+  id             String   @id @default(cuid())
+  deliveryItemId String   @map("delivery_item_id")
+  driverId       String   @map("driver_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  deliveryItem DeliveryItem @relation(fields: [deliveryItemId], references: [id])
+  driver       Driver       @relation(fields: [driverId], references: [id])
+
+  @@unique([deliveryItemId, driverId], name: "deliveryItemId_driverId")
+  @@map("delivery_follows")
 }
 
 // ─────────────────────────────────────────────

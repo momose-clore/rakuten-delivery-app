@@ -4,7 +4,7 @@ import { storageProvider } from "@/lib/storage";
 import { preprocessImageForOcr } from "@/lib/ocr/image-preprocess";
 import { runOcrSpace } from "@/lib/ocr/ocrspace";
 import { applyL1MProfile } from "@/lib/import/profiles/l1m-cargo-list-profile";
-import { saveImportBatch, calcBatchStats } from "@/lib/import/pipeline";
+import { saveImportBatch, saveDriverScan, calcBatchStats } from "@/lib/import/pipeline";
 import { computeImageHash } from "@/lib/ocr/hash";
 import { checkDailyLimit, logOcrUsage } from "@/lib/ocr/usage";
 import type { CaptureMode } from "@/types/import";
@@ -14,7 +14,7 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session || session.user.role !== "ADMIN") return NextResponse.json({ error: "権限がありません" }, { status: 403 });
+  if (!session || (session.user.role !== "ADMIN" && session.user.role !== "DRIVER")) return NextResponse.json({ error: "権限がありません" }, { status: 403 });
 
   const { imageUrl, captureMode = "paper" } = await req.json() as { imageUrl: string; captureMode?: CaptureMode };
   if (!imageUrl) return NextResponse.json({ error: "imageUrl が必要です" }, { status: 400 });
@@ -46,6 +46,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "L1M配車表を検出できませんでした。再撮影してください。" }, { status: 422 });
   }
 
+  // ドライバー自己スキャン：本人の本日配送として即反映（管理者確認スキップ）
+  if (session.user.role === "DRIVER") {
+    const driverId = session.user.driverId;
+    if (!driverId) return NextResponse.json({ error: "ドライバー情報が見つかりません" }, { status: 403 });
+    const { itemCount } = await saveDriverScan(
+      { ...batchResult, originalFileUrl: imageUrl },
+      driverId,
+      session.user.id,
+      imageUrl
+    );
+    return NextResponse.json({ reflected: true, itemCount, ...calcBatchStats(batchResult.rows), layoutProfile: batchResult.layoutProfile });
+  }
+
+  // 管理者：従来どおり取込バッチ→確認フロー
   const batchId = await saveImportBatch(
     { ...batchResult, originalFileUrl: imageUrl },
     session.user.id

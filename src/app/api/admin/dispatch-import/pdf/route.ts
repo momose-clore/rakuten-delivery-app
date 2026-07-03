@@ -6,13 +6,13 @@ import { auth } from "@/lib/auth/auth";
 import { storageProvider } from "@/lib/storage";
 import { parsePdfBuffer } from "@/lib/import/pdf/pdf-parser";
 import { autoRescueRows } from "@/lib/import/auto-rescue";
-import { saveImportBatch, calcBatchStats } from "@/lib/import/pipeline";
+import { saveImportBatch, saveDriverScan, calcBatchStats } from "@/lib/import/pipeline";
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session || (session.user.role !== "ADMIN" && session.user.role !== "DRIVER")) {
     return NextResponse.json({ error: "権限がありません" }, { status: 403 });
   }
 
@@ -34,11 +34,19 @@ export async function POST(req: NextRequest) {
   const { rows, source } = await parsePdfBuffer(buffer, waveNo);
   const rescued = await autoRescueRows(rows);
   const stats = calcBatchStats(rescued);
+  const result = { batchId: "", source, ...stats, rows: rescued, originalFileUrl: url, waveNo: waveNo ?? undefined };
 
-  const batchId = await saveImportBatch(
-    { batchId: "", source, ...stats, rows: rescued, originalFileUrl: url },
-    session.user.id
-  );
+  // ドライバー自己取込：本人の本日配送として即反映
+  if (session.user.role === "DRIVER") {
+    const driverId = session.user.driverId;
+    if (!driverId) return NextResponse.json({ error: "ドライバー情報が見つかりません" }, { status: 403 });
+    if (rescued.length === 0) return NextResponse.json({ error: "配送データを読み取れませんでした。別のPDFをお試しください。" }, { status: 422 });
+    const { itemCount } = await saveDriverScan(result, driverId, session.user.id, url);
+    return NextResponse.json({ reflected: true, itemCount, source, ...stats });
+  }
+
+  // 管理者：従来どおり取込バッチ→確認フロー
+  const batchId = await saveImportBatch(result, session.user.id);
 
   return NextResponse.json({ batchId, source, ...stats });
 }

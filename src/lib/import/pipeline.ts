@@ -104,6 +104,88 @@ export async function saveImportBatch(
   return batch.id;
 }
 
+/**
+ * ドライバー自己スキャン取込：OCR結果を本人の本日配送として即反映する。
+ * dispatch_image を CONFIRMED・本日日付で作成し、delivery_items を ASSIGNED で作り、
+ * スキャンしたドライバーへ assignment を作成する（管理者確認をスキップ）。
+ */
+export async function saveDriverScan(
+  result: ImportBatchResult,
+  driverId: string,
+  userId: string,
+  imageUrl: string
+): Promise<{ dispatchImageId: string; itemCount: number }> {
+  const workDate = new Date();
+  workDate.setHours(0, 0, 0, 0);
+
+  const dispatchImage = await prisma.dispatchImage.create({
+    data: {
+      deliveryDate: workDate,
+      area: result.depotName ?? null,
+      waveNo: result.waveNo ?? null,
+      imageUrl: imageUrl || "",
+      ocrStatus: "CONFIRMED",
+      ocrProvider: result.source,
+    },
+  });
+
+  let order = 1;
+  for (const row of result.rows) {
+    const rescued = row as RescuedRow;
+    const vehicleNo = row.dispatchKey?.split("-")[1] ?? null;
+    const seq = row.dispatchKey ? parseInt(row.dispatchKey.split("-").pop() ?? "0", 10) : null;
+
+    const item = await prisma.deliveryItem.create({
+      data: {
+        dispatchImageId: dispatchImage.id,
+        dispatchKey: row.dispatchKey,
+        waveNo: row.waveNo ?? null,
+        vehicleNo,
+        deliverySeq: seq,
+        invoiceNo: row.invoiceNo,
+        customerName: row.customerName,
+        customerPhone: row.customerPhone,
+        address: row.address,
+        specialFlag: row.specialFlag ?? null,
+        normalOriconCount: row.normalOriconCount,
+        coolerBoxCount: row.coolerBoxCount,
+        caseCount: row.caseCount,
+        totalCount: row.totalCount,
+        memo: row.memo ?? null,
+        ocrNotes: row.notes.length > 0 ? JSON.stringify(row.notes) : null,
+        ocrStatus: "CONFIRMED",
+        deliveryStatus: "ASSIGNED",
+        fieldSourceJson:        rescued.fieldSourceJson ?? null,
+        fieldStatusJson:        rescued.fieldStatusJson ?? null,
+        predictionWarningsJson: rescued.predictionWarningsJson ?? null,
+      },
+    });
+
+    await prisma.assignment.create({
+      data: {
+        deliveryItemId: item.id,
+        driverId,
+        routeOrder: seq ?? order,
+        waveNo: row.waveNo ?? null,
+        status: "ASSIGNED",
+      },
+    });
+    order++;
+  }
+
+  await prisma.auditLog.create({
+    data: {
+      userId,
+      action: "DRIVER_SCAN_IMPORT",
+      targetType: "dispatch_images",
+      targetId: dispatchImage.id,
+      afterData: { itemCount: result.rows.length, source: result.source },
+    },
+  });
+
+  return { dispatchImageId: dispatchImage.id, itemCount: result.rows.length };
+}
+
 /** 統計を計算 */
 export function calcBatchStats(rows: NormalizedDispatchRow[]) {
   return {

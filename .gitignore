@@ -59,3 +59,7 @@ response-structure.json
 response-keys.csv
 mapper-template.ts
 scripts/test-cario-auth.js
+
+# ブランドアセットは *.png 除外の例外として追跡する
+!public/brand/
+!public/brand/*.png

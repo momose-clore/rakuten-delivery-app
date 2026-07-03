@@ -16,6 +16,18 @@ export async function GET() {
   const driverId = session.user.driverId;
   if (!driverId) return NextResponse.json({ error: "ドライバー情報が見つかりません" }, { status: 403 });
 
+  const driver = await prisma.driver.findUnique({
+    where: { id: driverId },
+    select: { name: true, carioDriverId: true, vehicleId: true },
+  });
+
+  const reportDate = new Date();
+  reportDate.setHours(0, 0, 0, 0);
+  const dayReport = await prisma.driverDayReport.findUnique({
+    where: { driverId_workDate: { driverId, workDate: reportDate } },
+    select: { warehouseArrivalAt: true, finishedReportedAt: true },
+  });
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -26,40 +38,52 @@ export async function GET() {
       driverId,
       status: "ASSIGNED",
       deliveryItem: {
-        dispatchImage: {
-          deliveryDate: { gte: today, lt: tomorrow },
-          ocrStatus: "CONFIRMED",
-        },
+        dispatchImage: { deliveryDate: { gte: today, lt: tomorrow }, ocrStatus: "CONFIRMED" },
       },
     },
-    include: {
-      deliveryItem: {
-        select: {
-          id: true,
-          dispatchKey: true,
-          waveNo: true,
-          vehicleNo: true,
-          address: true,
-          normalOriconCount: true,
-          coolerBoxCount: true,
-          caseCount: true,
-          totalCount: true,
-          memo: true,
-          lat: true,
-          lng: true,
-          deliveryStatus: true,
-          coordinateSource: true,
-          coordinateStatus: true,
-          coordinateConfidence: true,
-        },
-      },
-    },
+    include: { deliveryItem: true },
     orderBy: { routeOrder: "asc" },
   });
 
+  // フォロー（応援）中の配送も本人の当日に含める（二重ハンドラ）
+  const follows = await prisma.deliveryFollow.findMany({
+    where: {
+      driverId,
+      deliveryItem: { dispatchImage: { deliveryDate: { gte: today, lt: tomorrow }, ocrStatus: "CONFIRMED" } },
+    },
+    include: {
+      deliveryItem: {
+        include: { assignments: { include: { driver: { select: { name: true, companyName: true, vehicleId: true } } } } },
+      },
+    },
+  });
+
+  type Entry = {
+    assignmentId: string;
+    routeOrder: number | null;
+    di: typeof assignments[number]["deliveryItem"];
+    follow: { vehicle: string; company: string; driverName: string } | null;
+  };
+  const entries: Entry[] = [
+    ...assignments.map((a) => ({ assignmentId: a.id, routeOrder: a.routeOrder, di: a.deliveryItem, follow: null })),
+    ...follows.map((f) => {
+      const orig = f.deliveryItem.assignments[0];
+      return {
+        assignmentId: `follow-${f.id}`,
+        routeOrder: orig?.routeOrder ?? null,
+        di: f.deliveryItem,
+        follow: {
+          vehicle: orig?.driver.vehicleId ?? f.deliveryItem.vehicleNo ?? "—",
+          company: orig?.driver.companyName ?? "—",
+          driverName: orig?.driver.name ?? "—",
+        },
+      };
+    }),
+  ];
+
   // N+1防止: 全アドレスの lookup key を一括収集してから override を一括クエリ
-  const addresses = assignments
-    .map((a) => a.deliveryItem.address)
+  const addresses = entries
+    .map((e) => e.di.address)
     .filter((addr): addr is string => !!addr);
 
   const lookupKeys = [...new Set(addresses.map(buildLookupKey))];
@@ -95,10 +119,10 @@ export async function GET() {
 
   // usageCount 一括更新（使用したoverride IDを収集）
   const usedOverrideIds = [...new Set(
-    assignments
-      .map((a) => {
-        if (!a.deliveryItem.address) return null;
-        const key = buildLookupKey(a.deliveryItem.address);
+    entries
+      .map((e) => {
+        if (!e.di.address) return null;
+        const key = buildLookupKey(e.di.address);
         return overrideMap.get(key)?.id ?? null;
       })
       .filter((id): id is string => !!id)
@@ -115,8 +139,8 @@ export async function GET() {
   }
 
   // 個人情報はログに出さない（address 等を console.log しない）
-  const items = assignments.map((a) => {
-    const di = a.deliveryItem;
+  const items = entries.map((e) => {
+    const di = e.di;
     const lookupKey = di.address ? buildLookupKey(di.address) : null;
     const override = lookupKey ? overrideMap.get(lookupKey) ?? null : null;
 
@@ -143,8 +167,9 @@ export async function GET() {
       : null;
 
     return {
-      assignmentId: a.id,
-      routeOrder: a.routeOrder,
+      assignmentId: e.assignmentId,
+      routeOrder: e.routeOrder,
+      follow: e.follow,
       waveNo: di.waveNo,
       deliveryItemId: di.id,
       dispatchKey: di.dispatchKey,
@@ -158,6 +183,7 @@ export async function GET() {
       lat: override?.lat ?? di.lat,
       lng: override?.lng ?? di.lng,
       deliveryStatus: di.deliveryStatus,
+      noMisdelivery: di.noMisdelivery,
       hasOverride: !!override,
       entranceMemo:  override?.entranceMemo ?? null,
       buildingMemo:  override?.buildingMemo ?? null,
@@ -180,5 +206,17 @@ export async function GET() {
     ? buildMapsUrls(geoItems.map((i) => ({ lat: i.lat!, lng: i.lng! })), true)
     : [];
 
-  return NextResponse.json({ items, mapsUrls });
+  return NextResponse.json({
+    items,
+    mapsUrls,
+    driver: {
+      name:      driver?.name ?? "ドライバー",
+      driverId:  driver?.carioDriverId ?? "—",
+      vehicleId: driver?.vehicleId ?? "—",
+    },
+    report: {
+      warehouseArrivalAt: dayReport?.warehouseArrivalAt ?? null,
+      finishedReportedAt: dayReport?.finishedReportedAt ?? null,
+    },
+  });
 }

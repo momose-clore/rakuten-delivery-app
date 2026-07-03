@@ -1497,6 +1497,11 @@ npm run db:seed:prod
 | 2026-07-02 | 予測値UI仕上げ | ルート画面に座標ステータスバッジ（確定/推定/未・RouteItem.coordinateStatus追加）・ドライバー画面に住所信頼度バッジ（assessAddressConfidence・medium/low時）。typecheck/lint/build 全OK |
 | 2026-07-02 | CARIOキー待機 | ユーザー判断でCARIO有効キー待機モードへ。アプリ側は現グリーン状態を維持（コード/インフラ変更なし）。Blob物理private化は影響大のため未着手 |
 | 2026-07-02 | 手順書のみ作成 | BLOB_PRIVATE_MIGRATION.md 作成（Blob物理private化の影響範囲・実施手順A-D・ロールバック・検証チェックリスト・リスク）。実装/インフラ変更は未実施 |
+| 2026-07-03 | クルー画面 新デザイン試作 | /preview・/driver-preview・/driver-lab（プレビュー・DB不要）でクルーUXをデザイン部門ワークフロー(リサーチ→4案→統合)で設計。CLOREロゴSVG/PNG・濃紺×ゴールド・Next Stopヒーロー・W1〜W6タブ・配車No特大 |
+| 2026-07-03 | クルー本番反映(Phase A) | 本番 /driver/today を新デザインに置換・/api/driver/today にdriver情報追加・配送取得/完了を実API接続 |
+| 2026-07-03 | クルー Phase B-1 | 倉庫到着時刻/終了報告/誤配なしをDB+API化。schema: DeliveryItem.noMisdelivery・DriverDayReport新設。API: warehouse-arrival/finish-report/no-misdelivery。migration 20260703120000。typecheck/lint/build/prisma 全OK（要Neon migration適用） |
+| 2026-07-03 | ドライバー配送表取込 | カメラ/PDF取込をDRIVERに開放。ドライバー自己スキャンは saveDriverScan で本人の本日配送に即反映（dispatch_image CONFIRMED＋delivery_items ASSIGNED＋本人割当）。/driver/camera 新設・PDFボタン実接続 |
+| 2026-07-03 | クルー Phase B-2 フォロー | 二重ハンドラ方式の応援機能。schema: DeliveryFollow新設（1明細1ドライバー）。API: followable(候補一覧)/follow(1件トグル)。today にフォロー分統合・status/no-misdelivery を応援者にも許可。UI: フォロー画面＋応援バッジ。完了は共有（migration 20260703140000）。全品質OK |
 
 ---
 
