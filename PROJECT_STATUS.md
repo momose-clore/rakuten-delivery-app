@@ -26,7 +26,16 @@
 | 配車No分割復元 | `11-1`が`11`+`1`(ハイフン欠落)に分割されても左カラム行クラスタから `N-M` を復元 |
 | 住所抽出の頑健化 | 住所ラベル依存を撤廃し、電話行(0始まりで判別容易)の下端を住所行起点に (top,left) 順で結合。語順の乱れ・ラベル読み落とし・複数行住所に強い |
 
-**残課題（軽微）**: `saveDriverScan` は重複取込をdedupしない（同一PDF2回で二重登録）。テスト口座に検証由来のダミー配送が残存。
+### 取込の重複防止・カメラ本番バグ修正・テストデータ管理（2026-07-03）
+| 項目 | 内容 | 検証 |
+|---|---|---|
+| 重複取込dedup | `saveDriverScan` が同一ドライバー・同日で既存の 伝票No/(W番号+配車No) と重複する行をスキップ（同一PDF/画像2回でも二重登録しない）。`skippedCount` 返却＋UIトースト表示 | 本番で再取込→`itemCount:0/skippedCount:3` 確認 |
+| **カメラ取込 本番500 修正** | `/camera/upload` が `TypeError: SharedArrayBuffer is not allowed` で500（sharpの`.toBuffer()`をVercel Blob put()のfetchが拒否）。`Buffer.from` で通常ArrayBuffer裏付けにコピー。**実機カメラ取込の本番バグ** | upload/process 200・カメラで3件反映確認 |
+| テストデータ消し込み | `GET /api/admin/setup/test-driver?action=cleanup&token=...` で TEST-001 の配送データのみ削除（実データ非対象） | 9件削除→0件確認 |
+
+**カメラ経路 本番検証**: upload→process→本日配送に3件反映（配車No W6-11-1/2/3・住所・ナビURL・layoutProfile=l1m_cargo_list）。
+
+**残課題（軽微）**: 数量(常温/クーラー/ケース/箱計)は空欄/0セルのOCR取りこぼしで実数と差異が出ることあり（サマリー総数とのクロスチェックで検知）。要・実運用データでの追調整。
 
 ---
 
@@ -1867,3 +1876,17 @@ npm run db:seed:prod
 - ミドルウェア対象外(/api/*)なのでLINEからのPOSTは認証で弾かれない
 - env追加: `LINE_CHANNEL_SECRET`（任意）
 - 品質: `npm run typecheck` ✅ / `npm run lint` ✅
+
+### ③-確定4 LINE送信テスト完了（1:1・グループとも成功）
+- テスト用公式アカウント「楽天テスト」で **1:1・グループ送信テスト成功**（`石毛 6W 増便申請が届きました`・HTTP200）
+- groupId取得: `/api/line/webhook` を cloudflare quick tunnel で公開 → Botがグループで返信 → `LINE_TEST_GROUP_ID` に設定（`.env.local`・値マスク）
+- 注意: dev serverは:3001が本コード（:3000は別インスタンスで404）。トンネル/Webhookは一時的（本番はCARIO-pull方式のため恒久運用は不要）
+- 管理画面「LINEテスト送信」ボタンは dev 再起動で env 反映後に同経路で動作
+
+### ③-確定5 増便は専用グループへ直送（管理画面ボタン）
+- 増便通知の送信先を **増便専用グループ**に変更（テスト用グループとは別）
+- ルート改名: `line-test` → `POST /api/admin/extra-vehicle-requests/[id]/line-send`（成功で `carioSyncStatus=sent` 更新・DTO返却）
+- 送信先: `LINE_EXTRA_VEHICLE_GROUP_ID`（body.to で上書き可）。管理画面ボタンは「LINEで送信 / LINE再送信」
+- env追加: `LINE_EXTRA_VEHICLE_GROUP_ID`（.env.local設定済・値マスク）
+- 専用グループへの送信テスト成功（HTTP200）。管理画面ボタンは dev(:3001) 再起動で env 反映後に動作
+- `npm run typecheck` ✅ / `npm run lint` ✅
