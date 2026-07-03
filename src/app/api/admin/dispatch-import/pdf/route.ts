@@ -9,6 +9,8 @@ import { parsePasteText } from "@/lib/import/paste/paste-parser";
 import { autoRescueRows } from "@/lib/import/auto-rescue";
 import { saveImportBatch, saveDriverScan, calcBatchStats } from "@/lib/import/pipeline";
 import { runOcrSpace } from "@/lib/ocr/ocrspace";
+import { preprocessImageForOcr } from "@/lib/ocr/image-preprocess";
+import { extractLargestJpegFromPdf } from "@/lib/import/pdf/extract-pdf-image";
 import { applyL1MProfile } from "@/lib/import/profiles/l1m-cargo-list-profile";
 import { isL1MLayout } from "@/lib/import/profiles/l1m-layout-detector";
 import { checkDailyLimit, logOcrUsage } from "@/lib/ocr/usage";
@@ -50,9 +52,18 @@ export async function POST(req: NextRequest) {
     const limit = await checkDailyLimit();
     if (!limit.ok) return NextResponse.json({ error: `OCR.space 日次上限（${limit.limit}回）到達` }, { status: 429 });
 
+    // スキャンPDFは埋め込み画像を取り出して「画像OCR（Engine2）」に回すと座標が安定し
+    // 配車No等の復元精度が上がる（実データで確認）。抽出できなければ従来の PDF→Engine1。
+    // いずれも OCR.space 送信は1回のみ（多重送信しない）。
+    const embeddedImage = extractLargestJpegFromPdf(buffer);
     let ocr;
     try {
-      ocr = await runOcrSpace(buffer, "application/pdf");
+      if (embeddedImage) {
+        const pre = await preprocessImageForOcr(embeddedImage);
+        ocr = await runOcrSpace(pre, "image/jpeg");
+      } else {
+        ocr = await runOcrSpace(buffer, "application/pdf");
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "不明なエラー";
       return NextResponse.json({ error: `OCR処理に失敗しました（${msg}）` }, { status: 502 });

@@ -14,6 +14,13 @@ import { correctDigitMisreads, toHalfWidth } from "@/lib/ocr/misread-dictionary"
 
 const DISPATCH_KEY_RE = /^\d{1,3}-\d{1,2}$/;
 
+function numEnv(key: string, def: number): number {
+  const v = process.env[key];
+  if (v === undefined) return def;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
+}
+
 function median(nums: number[]): number {
   if (nums.length === 0) return 0;
   const s = [...nums].sort((a, b) => a - b);
@@ -58,8 +65,10 @@ export function parseL1MRowBlocks(
   const sorted = [...words].sort((a, b) => a.top - b.top);
 
   // 領域の境界（左: 配車No/特殊フラグ、中: お客様情報、右: 数量）
-  const leftBoundary = imageWidth * 0.12;
-  const quantityBoundary = imageWidth * 0.76;
+  // 配車No列は実測で左端10〜13%に分布するため 0.14 で列全体を含める（0.12だと2桁目が欠落し復元不能・実データで確認）。
+  // 0.16以上にすると日付(2026/06/24)等を配車Noに誤検出するため上げすぎない。env で微調整可。
+  const leftBoundary = imageWidth * numEnv("OCR_L1M_LEFT_BOUNDARY", 0.14);
+  const quantityBoundary = imageWidth * numEnv("OCR_L1M_QTY_BOUNDARY", 0.76);
 
   // 左カラム語を「行」にクラスタリング（top近接）し、配車Noを含む行をブロック開始として検出
   const leftIdx: number[] = [];
