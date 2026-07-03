@@ -68,7 +68,11 @@ export function parseL1MRowBlocks(
   // 配車No列は実測で左端10〜13%に分布するため 0.14 で列全体を含める（0.12だと2桁目が欠落し復元不能・実データで確認）。
   // 0.16以上にすると日付(2026/06/24)等を配車Noに誤検出するため上げすぎない。env で微調整可。
   const leftBoundary = imageWidth * numEnv("OCR_L1M_LEFT_BOUNDARY", 0.14);
-  const quantityBoundary = imageWidth * numEnv("OCR_L1M_QTY_BOUNDARY", 0.76);
+  // 数量列は実測で 常温≈67% / クーラー≈78% / ケース≈88% / 箱計≈97%。お客様情報列との
+  // 境界は常温列の手前(≈0.63)。0.76だと常温列を取りこぼすため 0.63 を既定にする。
+  const quantityBoundary = imageWidth * numEnv("OCR_L1M_QTY_BOUNDARY", 0.63);
+  // 各数量列の中心x（imageWidth比）。数値はこの最寄り列に割り当てる。
+  const QTY_COL_CENTERS = [0.67, 0.78, 0.88, 0.97].map((f) => imageWidth * f);
 
   // 左カラム語を「行」にクラスタリング（top近接）し、配車Noを含む行をブロック開始として検出
   const leftIdx: number[] = [];
@@ -97,12 +101,17 @@ export function parseL1MRowBlocks(
 
   if (blockStarts.length === 0) return [];
 
+  const keyTops = blockStarts.map((idx) => sorted[idx].top);
   const rows: NormalizedDispatchRow[] = [];
 
+  // 伝票No行は配車No行の少し上に来るため、全ブロック境界を上方向に upShift だけずらす。
+  // これで各ブロック=[この配車No行−upShift, 次の配車No行−upShift) となり、伝票No行〜
+  // 住所行までの1配送分のサブ行を過不足なく含む（index単純スライスの隣ブロック混入を回避）。
+  const upShift = rowTol;
   for (let b = 0; b < blockStarts.length; b++) {
-    const startIdx = blockStarts[b];
-    const endIdx = b + 1 < blockStarts.length ? blockStarts[b + 1] : sorted.length;
-    const blockWords = sorted.slice(startIdx, endIdx);
+    const lowerY = keyTops[b] - upShift;
+    const upperY = b + 1 < keyTops.length ? keyTops[b + 1] - upShift : Infinity;
+    const blockWords = sorted.filter((w) => w.top >= lowerY && w.top < upperY);
 
     // 配車No（行クラスタから復元済みの値を使用：分割・ハイフン欠落に対応）
     const dispatchKeyRaw = blockKeys[b] ?? "";
@@ -120,27 +129,39 @@ export function parseL1MRowBlocks(
 
     // 伝票No・氏名・電話・住所をラベルベースで抽出
     const centerText = centerWords.map((w) => w.text).join(" ");
-    const invoiceNo = extractInvoiceNo(centerText);
-    const { value: phone, valid: phoneValid } = extractPhone(centerText);
+    // 伝票No：L1Mは「20XX始まり15桁」。中央語の数字を順に連結し 20XX+13桁 を直接狙う
+    // （連結テキスト全体からだと 郵便番号/電話 と繋がって誤った数字列を拾うため）。
+    const centerDigits = centerWords
+      .map((w) => correctDigitMisreads(toHalfWidth(w.text)).replace(/[^\d]/g, ""))
+      .join("");
+    const invMatch = centerDigits.match(/20\d{13}/) ?? centerDigits.match(/\d{12,16}/);
+    const invoiceNo = invMatch ? invMatch[0] : extractInvoiceNo(centerText);
+    // 連絡先行を特定：電話は「090 - 1552 - 3598」のように語分割されるため、
+    // 連絡先ラベルの y 帯にある中央語を丸ごと結合して電話番号を復元する。
+    const renrakuLabel = centerWords.find(
+      (w) => w.text.includes("連絡") || w.text.includes("絡") || w.text.includes("電話")
+    );
+    const renrakuTop = renrakuLabel ? renrakuLabel.top : -1;
+    const phoneStr =
+      renrakuTop >= 0
+        ? centerWords
+            .filter((w) => Math.abs(w.top - renrakuTop) <= rowTol && !/連絡|絡|電話|先/.test(w.text))
+            .sort((a, b) => a.left - b.left)
+            .map((w) => toHalfWidth(w.text))
+            .join("")
+        : "";
+    const { value: phone, valid: phoneValid } = extractPhone(phoneStr);
 
     // 氏名（「氏名」ラベル後の文字列）
     const nameMatch = centerText.match(/氏名[\s:：]*([\p{L}ぁ-んァ-ン一-龠\s]{2,20})/u);
     const customerName = nameMatch ? extractName(nameMatch[1]) : extractName(centerText);
 
-    // 住所：L1Mのサブ行順（伝票No→氏名→連絡先→住所）を利用し、住所行の起点yより下の
-    // 中央語を (top,left) 順で結合する。文字列の非貪欲マッチや住所ラベル依存だと、語順の
-    // 乱れ・住所ラベルの読み落としで住所が欠落するため、y座標ベースで頑健に拾う。
-    // 住所行の起点y：電話番号(0始まりで判別容易)/連絡先ラベルの下端＝住所行を主アンカーにする
-    // （住所ラベルのOCRは読み落としやすく、番地/郵便番号の位置ずれにも弱いため副次扱い）。
-    // 電話は必ず0始まりのため ^0 で限定し、郵便番号(123-0841)や番地(40-26)を誤検出しない。
+    // 住所：L1Mのサブ行順（伝票No→氏名→連絡先→住所）を利用し、連絡先行の直下＝住所行と
+    // みなして、その y 以下の中央語を (top,left) 順で結合する。文字列の非貪欲マッチや住所
+    // ラベル依存だと語順の乱れ・ラベル読み落としで住所が欠落するため、y座標ベースで頑健に拾う。
     let addrTop = -1;
-    const phoneish = centerWords.filter((w) => {
-      if (w.text.includes("連絡") || w.text.includes("電話")) return true;
-      const t = toHalfWidth(w.text).replace(/\s/g, "");
-      return /^0\d{1,3}-\d{2,4}-\d{3,4}$/.test(t) || /^0\d{9,10}$/.test(t);
-    });
-    if (phoneish.length > 0) {
-      addrTop = Math.max(...phoneish.map((w) => w.top)) + 1;
+    if (renrakuTop >= 0) {
+      addrTop = renrakuTop + rowTol * 0.6;
     } else {
       const addrLabel = centerWords.find((w) => w.text.includes("住所"));
       if (addrLabel) addrTop = addrLabel.top - 2;
@@ -157,12 +178,23 @@ export function parseL1MRowBlocks(
     }
     const { value: address, suspect: addressSuspect } = extractAddress(rawAddress);
 
-    // 数量（数値のみ抽出して左→右で常温/クーラー/ケース/総数に割当）
-    const qNums = quantityWords
-      .map((w) => correctDigitMisreads(toHalfWidth(w.text)).replace(/[^\d]/g, ""))
-      .filter((t) => t.length > 0);
+    // 数量：各数値を実測の列中心（常温/クーラー/ケース/箱計）の最寄りに割り当てる。
+    // 単純な左→右順だと空セル(0/空欄)で列がズレるため、x座標で列を決める。
+    const cols: string[] = ["", "", "", ""];
+    for (const w of quantityWords) {
+      const num = correctDigitMisreads(toHalfWidth(w.text)).replace(/[^\d]/g, "");
+      if (!num) continue;
+      const cx = w.left + w.width / 2;
+      let ci = 0;
+      let best = Infinity;
+      for (let c = 0; c < QTY_COL_CENTERS.length; c++) {
+        const d = Math.abs(cx - QTY_COL_CENTERS[c]);
+        if (d < best) { best = d; ci = c; }
+      }
+      if (cols[ci] === "") cols[ci] = num;
+    }
     const { normalOricon, coolerBox, caseCount, totalCount } = extractCounts(
-      qNums[0] ?? "", qNums[1] ?? "", qNums[2] ?? "", qNums[3] ?? ""
+      cols[0], cols[1], cols[2], cols[3]
     );
 
     // メモ（数量エリア下の文章）

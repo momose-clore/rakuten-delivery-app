@@ -34,8 +34,11 @@ function boolEnv(key: string, def: boolean): boolean {
 
 /** 詳細版：処理済みバッファ＋前処理メタデータを返す */
 export async function preprocessImageForOcrDetailed(buffer: Buffer): Promise<{ buffer: Buffer; meta: PreprocessMeta }> {
-  const TARGET = numEnv("OCR_PREPROCESS_TARGET_LONG_EDGE", 3600);
-  const MAX = numEnv("OCR_PREPROCESS_MAX_LONG_EDGE", 4200);
+  // 潰れた小さい文字（伝票No・数量）対策で解像度を優先。実機の高解像度写真を
+  // むやみに縮小しないよう MAX を大きく取り、実質の上限は送信ペイロード(1MB)側で調整する
+  // （grayscaleなら6000px級でも1MB以下に収まることを実測済み）。
+  const TARGET = numEnv("OCR_PREPROCESS_TARGET_LONG_EDGE", 4000);
+  const MAX = numEnv("OCR_PREPROCESS_MAX_LONG_EDGE", 6000);
   const ENABLE_UPSCALE = boolEnv("OCR_PREPROCESS_ENABLE_UPSCALE", true);
   const ENABLE_SHARPEN = boolEnv("OCR_PREPROCESS_ENABLE_SHARPEN", true);
   const ENABLE_CONTRAST = boolEnv("OCR_PREPROCESS_ENABLE_CONTRAST", true);
@@ -86,16 +89,16 @@ export async function preprocessImageForOcrDetailed(buffer: Buffer): Promise<{ b
   // 無料枠は1画像1MB制限のため OCR_MAX_PAYLOAD_MB=1 を推奨（既定3.5=PRO想定）。
   const maxPayload = Math.round(numEnv("OCR_MAX_PAYLOAD_MB", 3.5) * 1_000_000);
   if (out.length > maxPayload) {
-    // まず品質を段階的に落とす
-    for (const q of [78, 68, 58]) {
+    // 潰れた小さい文字を守るため「解像度優先」：まず品質を大きく落として収める。
+    for (const q of [78, 68, 58, 50, 44]) {
       if (out.length <= maxPayload) break;
       out = await sharp(out).jpeg({ quality: q }).toBuffer();
     }
-    // それでも超える場合は長辺を段階縮小（文字が読める下限 1800px まで）
+    // 品質だけで収まらない場合のみ長辺を段階縮小（下限 2400px＝小数字が潰れない範囲）
     let guardWidth = processedWidth;
-    while (out.length > maxPayload && guardWidth > 1800) {
-      guardWidth = Math.round(guardWidth * 0.85);
-      out = await sharp(out).resize({ width: guardWidth }).jpeg({ quality: 68 }).toBuffer();
+    while (out.length > maxPayload && guardWidth > 2400) {
+      guardWidth = Math.round(guardWidth * 0.88);
+      out = await sharp(out).resize({ width: guardWidth }).jpeg({ quality: 50 }).toBuffer();
     }
     steps.push(`payload-guard→${(out.length / 1_000_000).toFixed(2)}MB`);
   }
