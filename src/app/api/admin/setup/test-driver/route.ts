@@ -22,6 +22,33 @@ export async function GET(req: NextRequest) {
     if (session.user.role !== "ADMIN") return NextResponse.json({ error: "管理者のみ実行できます" }, { status: 403 });
   }
 
+  // クリーンアップ：テストドライバー(TEST-001)の配送データのみ削除（実データは対象外）
+  const action = req.nextUrl.searchParams.get("action");
+  if (action === "cleanup") {
+    const driver = await prisma.driver.findUnique({ where: { carioDriverId: "TEST-001" } });
+    if (!driver) return NextResponse.json({ ok: true, message: "テストドライバーが存在しません（削除対象なし）" });
+    const asg = await prisma.assignment.findMany({ where: { driverId: driver.id }, select: { deliveryItemId: true } });
+    const itemIds = asg.map((a) => a.deliveryItemId);
+    const items = await prisma.deliveryItem.findMany({ where: { id: { in: itemIds } }, select: { dispatchImageId: true } });
+    const imageIds = [...new Set(items.map((i) => i.dispatchImageId))];
+    await prisma.deliveryFollow.deleteMany({ where: { OR: [{ driverId: driver.id }, { deliveryItemId: { in: itemIds } }] } });
+    await prisma.assignment.deleteMany({ where: { driverId: driver.id } });
+    await prisma.deliveryItem.deleteMany({ where: { id: { in: itemIds } } });
+    let deletedImages = 0;
+    for (const imgId of imageIds) {
+      const remain = await prisma.deliveryItem.count({ where: { dispatchImageId: imgId } });
+      if (remain === 0) { await prisma.dispatchImage.delete({ where: { id: imgId } }); deletedImages++; }
+    }
+    await prisma.driverDayReport.deleteMany({ where: { driverId: driver.id } });
+    return NextResponse.json({
+      ok: true,
+      message: "テストドライバーの配送データを削除しました",
+      deletedAssignments: itemIds.length,
+      deletedItems: itemIds.length,
+      deletedImages,
+    });
+  }
+
   const email = "test-driver@delivery-app.local";
   const password = "driver1234";
   const passwordHash = await bcryptjs.hash(password, 12);

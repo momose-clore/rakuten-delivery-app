@@ -114,9 +114,27 @@ export async function saveDriverScan(
   driverId: string,
   userId: string,
   imageUrl: string
-): Promise<{ dispatchImageId: string; itemCount: number }> {
+): Promise<{ dispatchImageId: string; itemCount: number; skippedCount: number }> {
   const workDate = new Date();
   workDate.setHours(0, 0, 0, 0);
+  const nextDate = new Date(workDate);
+  nextDate.setDate(nextDate.getDate() + 1);
+
+  // 重複取込防止：同一ドライバー・同日で既に取り込まれた 伝票No / (W番号+配車No) は再作成しない
+  // （同じPDF/画像を2回流しても配送が二重登録されないようにする）
+  const existingItems = await prisma.deliveryItem.findMany({
+    where: {
+      assignments: { some: { driverId } },
+      dispatchImage: { deliveryDate: { gte: workDate, lt: nextDate } },
+    },
+    select: { dispatchKey: true, waveNo: true, invoiceNo: true },
+  });
+  const seenInvoice = new Set<string>();
+  const seenKey = new Set<string>();
+  for (const it of existingItems) {
+    if (it.invoiceNo) seenInvoice.add(it.invoiceNo);
+    if (it.dispatchKey) seenKey.add(`${it.waveNo ?? ""}|${it.dispatchKey}`);
+  }
 
   const dispatchImage = await prisma.dispatchImage.create({
     data: {
@@ -130,7 +148,22 @@ export async function saveDriverScan(
   });
 
   let order = 1;
+  let createdCount = 0;
+  let skippedCount = 0;
   for (const row of result.rows) {
+    // 既存 or 同一取込内の重複はスキップ
+    const invoiceKey = row.invoiceNo ?? null;
+    const dispatchKeyStr = row.dispatchKey ? `${row.waveNo ?? ""}|${row.dispatchKey}` : null;
+    const isDup =
+      (invoiceKey !== null && seenInvoice.has(invoiceKey)) ||
+      (dispatchKeyStr !== null && seenKey.has(dispatchKeyStr));
+    if (isDup) {
+      skippedCount++;
+      continue;
+    }
+    if (invoiceKey !== null) seenInvoice.add(invoiceKey);
+    if (dispatchKeyStr !== null) seenKey.add(dispatchKeyStr);
+
     const rescued = row as RescuedRow;
     const vehicleNo = row.dispatchKey?.split("-")[1] ?? null;
     const seq = row.dispatchKey ? parseInt(row.dispatchKey.split("-").pop() ?? "0", 10) : null;
@@ -171,6 +204,7 @@ export async function saveDriverScan(
       },
     });
     order++;
+    createdCount++;
   }
 
   await prisma.auditLog.create({
@@ -179,11 +213,11 @@ export async function saveDriverScan(
       action: "DRIVER_SCAN_IMPORT",
       targetType: "dispatch_images",
       targetId: dispatchImage.id,
-      afterData: { itemCount: result.rows.length, source: result.source },
+      afterData: { itemCount: createdCount, skippedCount, source: result.source },
     },
   });
 
-  return { dispatchImageId: dispatchImage.id, itemCount: result.rows.length };
+  return { dispatchImageId: dispatchImage.id, itemCount: createdCount, skippedCount };
 }
 
 /** 統計を計算 */

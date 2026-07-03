@@ -152,7 +152,8 @@ export function TodayClient() {
     if (res.ok) {
       const b = await res.json();
       await fetchToday();
-      setToast(`PDFを本日の配送に反映しました（${b.itemCount ?? 0}件）`);
+      const skip = b.skippedCount ? `・重複${b.skippedCount}件スキップ` : "";
+      setToast(`PDFを本日の配送に反映しました（${b.itemCount ?? 0}件${skip}）`);
     } else {
       const b = await res.json().catch(() => ({}));
       setToast(b.error ?? "PDF取込に失敗しました");

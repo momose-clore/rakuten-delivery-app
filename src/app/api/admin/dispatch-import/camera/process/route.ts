@@ -50,13 +50,13 @@ export async function POST(req: NextRequest) {
   if (session.user.role === "DRIVER") {
     const driverId = session.user.driverId;
     if (!driverId) return NextResponse.json({ error: "ドライバー情報が見つかりません" }, { status: 403 });
-    const { itemCount } = await saveDriverScan(
+    const { itemCount, skippedCount } = await saveDriverScan(
       { ...batchResult, originalFileUrl: imageUrl },
       driverId,
       session.user.id,
       imageUrl
     );
-    return NextResponse.json({ reflected: true, itemCount, ...calcBatchStats(batchResult.rows), layoutProfile: batchResult.layoutProfile });
+    return NextResponse.json({ reflected: true, itemCount, skippedCount, ...calcBatchStats(batchResult.rows), layoutProfile: batchResult.layoutProfile });
   }
 
   // 管理者：従来どおり取込バッチ→確認フロー
