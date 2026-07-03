@@ -62,15 +62,17 @@ export async function runOcrSpace(imageBuffer: Buffer, mime: string = "image/jpe
   // 開発環境のみデモキー fallback（1日500回・1MB以下制限あり）
   const apiKey = configuredKey ?? "helloworld";
 
+  const isPdf = mime === "application/pdf";
   const formData = new FormData();
   const base64 = imageBuffer.toString("base64");
   formData.append("base64Image", `data:${mime};base64,${base64}`);
-  if (mime === "application/pdf") formData.append("filetype", "PDF");
+  if (isPdf) formData.append("filetype", "PDF");
   formData.append("language", "jpn");
   formData.append("isOverlayRequired", "true");   // 座標情報を取得
   formData.append("detectOrientation", "true");
   formData.append("scale", "true");
-  formData.append("OCREngine", "2");
+  // Engine2 は画像専用（PDF非対応）。PDFは Engine1 を使う
+  formData.append("OCREngine", isPdf ? "1" : "2");
   formData.append("isTable", "true");             // テーブルモード
 
   const res = await fetch("https://api.ocr.space/parse/image", {

@@ -1,7 +1,7 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-07-02（CARIO stale警告UI実装完了・APIキー設定待ち）
+> 最終更新: 2026-07-03（クルー新デザイン本番稼働・カメラ/PDF取込・フォロー実装・OCR精度改善）
 
 ---
 
@@ -1502,6 +1502,10 @@ npm run db:seed:prod
 | 2026-07-03 | クルー Phase B-1 | 倉庫到着時刻/終了報告/誤配なしをDB+API化。schema: DeliveryItem.noMisdelivery・DriverDayReport新設。API: warehouse-arrival/finish-report/no-misdelivery。migration 20260703120000。typecheck/lint/build/prisma 全OK（要Neon migration適用） |
 | 2026-07-03 | ドライバー配送表取込 | カメラ/PDF取込をDRIVERに開放。ドライバー自己スキャンは saveDriverScan で本人の本日配送に即反映（dispatch_image CONFIRMED＋delivery_items ASSIGNED＋本人割当）。/driver/camera 新設・PDFボタン実接続 |
 | 2026-07-03 | クルー Phase B-2 フォロー | 二重ハンドラ方式の応援機能。schema: DeliveryFollow新設（1明細1ドライバー）。API: followable(候補一覧)/follow(1件トグル)。today にフォロー分統合・status/no-misdelivery を応援者にも許可。UI: フォロー画面＋応援バッジ。完了は共有（migration 20260703140000）。全品質OK |
+| 2026-07-03 | 🎉 本番デプロイ | vercel.json で build時 prisma migrate deploy 自動実行。GitHub push→未適用migration自動適用→本番反映。/preview・/driver/today 本番稼働確認済み |
+| 2026-07-03 | テストドライバー | GET /api/admin/setup/test-driver（ADMIN or ?token=）でテストドライバー(test-driver@delivery-app.local/driver1234)＋本日サンプル配送3件を作成。本番動作確認用（用済み後削除推奨） |
+| 2026-07-03 | スマホ対応強化 | viewport-fit=cover(iPhoneセーフエリア)・themeColor・lang=ja・apple-web-app・HEIC→JPEG正規化(sharp) |
+| 2026-07-03 | OCR精度改善 | カメラ前処理強化(2600px化・CLAHE局所コントラスト・sharpen強化)。スキャンPDFはEngine1(PDF対応)＋テキスト解析フォールバック＋エラー可視化。OCR.space1画像1回の方針は不変 |
 
 ---
 

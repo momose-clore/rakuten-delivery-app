@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { storageProvider } from "@/lib/storage";
 import { parsePdfBuffer } from "@/lib/import/pdf/pdf-parser";
+import { parsePasteText } from "@/lib/import/paste/paste-parser";
 import { autoRescueRows } from "@/lib/import/auto-rescue";
 import { saveImportBatch, saveDriverScan, calcBatchStats } from "@/lib/import/pipeline";
 import { runOcrSpace } from "@/lib/ocr/ocrspace";
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
   const { url } = await storageProvider.save(buffer, filename);
 
   const parsed = await parsePdfBuffer(buffer, waveNo);
-  let rescued: NormalizedDispatchRow[];
+  let rescued: NormalizedDispatchRow[] = [];
   let source: "pdf_text" | "pdf_ocr" = parsed.source;
 
   if (parsed.rows.length > 0) {
@@ -48,20 +49,33 @@ export async function POST(req: NextRequest) {
     // スキャンPDF（CamScanner等・テキストなし）→ OCR.space に通す
     const limit = await checkDailyLimit();
     if (!limit.ok) return NextResponse.json({ error: `OCR.space 日次上限（${limit.limit}回）到達` }, { status: 429 });
-    const ocr = await runOcrSpace(buffer, "application/pdf");
+
+    let ocr;
+    try {
+      ocr = await runOcrSpace(buffer, "application/pdf");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "不明なエラー";
+      return NextResponse.json({ error: `OCR処理に失敗しました（${msg}）` }, { status: 502 });
+    }
     await logOcrUsage({ imageHash: computeImageHash(buffer), status: "success", itemCount: 0 });
-    if (!isL1MLayout(ocr.parsedText, ocr.words)) {
-      return NextResponse.json({ error: "配送表（L1M）を検出できませんでした。1ページ・正面・鮮明なPDFをお試しください。" }, { status: 422 });
-    }
-    const batch = await applyL1MProfile({
-      parsedText: ocr.parsedText, words: ocr.words,
-      imageWidth: ocr.imageWidth, imageHeight: ocr.imageHeight, source: "image_ocr",
-    });
-    if (!batch) {
-      return NextResponse.json({ error: "配送表を解析できませんでした。1ページ・正面・鮮明なPDFをお試しください。" }, { status: 422 });
-    }
-    rescued = batch.rows;
     source = "pdf_ocr";
+
+    // 座標が取れていれば L1M 座標復元、弱ければ OCR テキストのパースにフォールバック
+    if (ocr.words.length > 0 && isL1MLayout(ocr.parsedText, ocr.words)) {
+      const batch = await applyL1MProfile({
+        parsedText: ocr.parsedText, words: ocr.words,
+        imageWidth: ocr.imageWidth, imageHeight: ocr.imageHeight, source: "image_ocr",
+      });
+      rescued = batch ? batch.rows : [];
+    }
+    if (rescued.length === 0 && ocr.parsedText.trim().length > 0) {
+      const textRows = parsePasteText(ocr.parsedText, waveNo).map((r) => ({ ...r, source: "pdf_ocr" as const }));
+      rescued = await autoRescueRows(textRows);
+    }
+    if (rescued.length === 0) {
+      const chars = ocr.parsedText.replace(/\s/g, "").length;
+      return NextResponse.json({ error: `配送表を読み取れませんでした（認識文字数: ${chars}）。1ページ・正面・明るい場所で撮り直してください。` }, { status: 422 });
+    }
   }
 
   const stats = calcBatchStats(rescued);
