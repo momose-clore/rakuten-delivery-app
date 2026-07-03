@@ -1,7 +1,32 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-07-03（OCR v6 強化中：高解像度前処理・画像品質チェック・誤読辞書拡張）
+> 最終更新: 2026-07-03（本番OCRキー登録・実PDF反映を本番検証済／スキャンPDF強化）
+
+---
+
+## ✅ 本番OCR稼働（2026-07-03 解消・検証済）
+
+**症状**: 本番アプリでカメラ/画像/PDF のOCRが全て HTTP 502（「本番環境では OCR_SPACE_API_KEY の設定が必須です」）。
+**原因**: Vercel 本番 env に `OCR_SPACE_API_KEY` が未登録（コードは方針どおり本番でデモキーfallback禁止＝正常挙動）。
+**対応**（Vercel CLI で実施）:
+- `OCR_SPACE_API_KEY`（OCR.space **無料登録キー**・デモキー不使用）を Production/Preview に登録
+- `OCR_MAX_PAYLOAD_MB=1` を Production/Preview に登録（無料枠「1画像1MB」に前処理を自動収束）
+- 再デプロイ
+
+**無料枠の制限**: 1画像1MB / PDF3ページ / 月25,000回。>1MBは前処理側で段階圧縮（品質→解像度、下限1800px）。
+
+**本番検証**（テストドライバーで実PDF送信）: `reflected:true / itemCount:3 / needsReview:0`。配車No(11-1/11-2/11-3)・住所・数量・ナビURL 全て反映を確認。
+
+### スキャンPDF・座標解析の強化（同日）
+| 改善 | 内容 |
+|---|---|
+| スキャンPDFの画像OCR化 | 生PDF→Engine1は表構造が崩れるため、PDF内埋め込みJPEGを抽出→画像OCR(Engine2)に回す（送信は1回・`extract-pdf-image.ts`） |
+| 配車No列境界 | 実測で配車No列は左端10〜13%に分布。`leftBoundary` 0.12→0.14（0.16以上は日付を誤検出）。`OCR_L1M_LEFT_BOUNDARY`/`OCR_L1M_QTY_BOUNDARY` でenv微調整可 |
+| 配車No分割復元 | `11-1`が`11`+`1`(ハイフン欠落)に分割されても左カラム行クラスタから `N-M` を復元 |
+| 住所抽出の頑健化 | 住所ラベル依存を撤廃し、電話行(0始まりで判別容易)の下端を住所行起点に (top,left) 順で結合。語順の乱れ・ラベル読み落とし・複数行住所に強い |
+
+**残課題（軽微）**: `saveDriverScan` は重複取込をdedupしない（同一PDF2回で二重登録）。テスト口座に検証由来のダミー配送が残存。
 
 ---
 
@@ -1803,4 +1828,42 @@ npm run db:seed:prod
   - `LINE_CHANNEL_ACCESS_TOKEN`（CARIO公式アカウントのMessaging APIトークン）
   - `LINE_EXTRA_VEHICLE_GROUP_ID`（公式アカウントが参加する専用グループID）
 - **残る依存**: ①公式アカウントのMessaging APIトークン ②公式アカウントを専用グループに参加させグループIDを取得（webhook等）
+- 品質: `npm run typecheck` ✅ / `npm run lint` ✅
+
+### ③-確定 増便連携は「CARIOが当アプリからpull → CARIO公式LINEで専用グループへ報告」
+> 前2案（当アプリから直接LINE push / CARIOへPOST）はいずれも撤回。**CARIOが当アプリを pull する**方向に確定。
+
+- 削除: 直接LINE push（`src/lib/line/extra-vehicle-report.ts`）/ `report-line`ルート / LINE系env（`LINE_CHANNEL_ACCESS_TOKEN`等）/ 管理画面「LINEで報告」ボタン
+- 新規（外部連携＝CARIOが叩くインバウンドAPI）:
+  - `GET /api/external/extra-vehicle-requests` … 増便申請を返す（Bearer認証）。`?status= / ?since= / ?limit=` 対応
+    - 各申請に **`reportText`（指定フォーマット整形済み本文）** を含める → CARIOはこれをそのまま専用グループへ投稿
+  - `POST /api/external/extra-vehicle-requests/[id]/ack` … CARIOが報告後に報告済みマーク（任意・状態を正確化）
+  - `src/lib/external/auth.ts` … Bearerトークン検証（timingSafe・未設定なら全拒否）
+  - `src/lib/line/format.ts` … 報告本文整形（`7/3 / 対象デポ / 該当便 / 台数(1台→石毛) / 申請理由`）。GET APIと管理画面プレビューで共用
+- 管理画面: 承認/却下＋「報告文をコピー」「本文を表示」（CARIO未取得でも手動報告・内容確認できる）
+- ミドルウェアは `/admin`・`/driver`・`/login` のみ対象 → `/api/external/*` は認証で弾かれない（Bearerで自前認証）
+- DBは不変（`cario_*`カラムを報告ステータスに流用。ラベル: 未報告/取得待ち/報告済み/報告失敗）
+- 必要な環境変数: **`EXTRA_VEHICLE_PULL_TOKEN`**（当アプリ発行→CARIOへ共有。CARIOを呼ぶ`RAKUTEN_APP_API_KEY`とは別・逆方向）
+- **残る調整**: ①`EXTRA_VEHICLE_PULL_TOKEN`を発行しCARIOへ共有 ②CARIO側にpull実装（ポーリング/cron）とLINE投稿・ack を依頼
+- セキュリティ: トークン・reportText本文・生レスポンスをログに出さない
+- 品質: `npm run typecheck` ✅ / `npm run lint` ✅
+
+### ③-確定2 LINE文面は実グループと同じ短い通知＋テスト送信ツール追加
+> 実LINEエクスポート（【楽天ネットスーパー美女木】）を確認。CARIOの実投稿は短い1行 `◯◯ 6W 増便申請が届きました`。長文フォーマットは実際には使われていないため、送信文面を**短い通知に変更**。
+
+- 文面: `formatExtraVehicleNotification(name, waveNo)` = `{割当先or申請者} {便(大文字W)} 増便申請が届きました`（`src/lib/line/format.ts`）
+- 外部pull APIの `reportText` を短い通知に変更（CARIOはこれをそのまま投稿）
+- テスト送信ツール（本番報告経路=CARIO pull とは別・検証用）:
+  - `src/lib/line/send.ts`（`pushLineText`・PII非ログ）
+  - `POST /api/admin/extra-vehicle-requests/[id]/line-test`（ADMIN・報告ステータスは変更しない）
+  - 管理画面「LINEテスト送信」ボタン（確認ダイアログ付き・送信先は `LINE_TEST_GROUP_ID`）
+- env: `LINE_CHANNEL_ACCESS_TOKEN` / `LINE_TEST_GROUP_ID`（**本番グループを汚さないよう必ずテスト用**）
+- 現状 `.env.local` にLINE系・pullトークンとも**未設定** → 実送信は未実施（設定後にボタンで送信可）
+- 品質: `npm run typecheck` ✅ / `npm run lint` ✅
+
+### ③-確定3 groupId取得用の一時Webhook追加（LINEテスト準備）
+- `POST /api/line/webhook` … Botがグループで発言を受けると、そのトークルームのID(groupId等)を返信。テスト用のLINE_TEST_GROUP_ID取得を補助
+- 署名検証は `LINE_CHANNEL_SECRET` があれば実施（未設定ならテスト用途でスキップ）
+- ミドルウェア対象外(/api/*)なのでLINEからのPOSTは認証で弾かれない
+- env追加: `LINE_CHANNEL_SECRET`（任意）
 - 品質: `npm run typecheck` ✅ / `npm run lint` ✅
