@@ -1,0 +1,33 @@
+name: CARIO Realtime Sync
+
+# 無料でのサーバー側リアルタイム同期（Hobbyプランの Vercel Cron は日次上限のため）。
+# GitHub Actions のスケジュール最短は 5 分間隔（混雑時は多少遅延あり・ベストエフォート）。
+# cron エンドポイントを CRON_SECRET 付きで叩き、CARIO最新→DB同期を回す。
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # 5分ごと（UTC基準）
+  workflow_dispatch: {} # 手動実行も可
+
+concurrency:
+  group: cario-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger CARIO sync endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          code=$(curl -sS -o /tmp/out.json -w "%{http_code}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "https://rakuten-delivery-app.vercel.app/api/cron/cario-sync")
+          echo "HTTP ${code}"
+          cat /tmp/out.json || true
+          echo ""
+          if [ "${code}" != "200" ]; then
+            echo "::error::CARIO sync failed with HTTP ${code}"
+            exit 1
+          fi
