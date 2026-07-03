@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       area: true,
       waveNo: true,
       ocrStatus: true,
+      ocrProvider: true,
       createdAt: true,
     },
   });
@@ -82,6 +83,44 @@ export async function GET(req: NextRequest) {
   const overallAccuracyPercent = totals.totalFieldCount > 0
     ? Math.round((confirmedTotal / totals.totalFieldCount) * 100)
     : 0;
+  const rescueRate = totals.totalFieldCount > 0
+    ? Math.round((totals.autoRescuedFieldCount / totals.totalFieldCount) * 100) : 0;
+  const needsReviewRate = totals.totalFieldCount > 0
+    ? Math.round((totals.needsReviewFieldCount / totals.totalFieldCount) * 100) : 0;
 
-  return NextResponse.json({ rows, totals: { ...totals, overallAccuracyPercent } });
+  // 明細スキャン：要確認理由TOP・取込方式別・W番号別（個人情報は集計のみ）
+  const imageIds = images.map((i) => i.id);
+  const items = imageIds.length > 0
+    ? await prisma.deliveryItem.findMany({ where: { dispatchImageId: { in: imageIds } }, select: { ocrNotes: true, waveNo: true } })
+    : [];
+
+  const reasonCounts: Record<string, number> = {};
+  const waveCounts: Record<string, number> = {};
+  for (const it of items) {
+    const wave = it.waveNo ?? "不明";
+    waveCounts[wave] = (waveCounts[wave] ?? 0) + 1;
+    if (!it.ocrNotes) continue;
+    try {
+      for (const r of JSON.parse(it.ocrNotes) as string[]) reasonCounts[r] = (reasonCounts[r] ?? 0) + 1;
+    } catch { /* skip */ }
+  }
+  const reasonTop = Object.entries(reasonCounts).sort((a, b) => b[1] - a[1]).slice(0, 10)
+    .map(([reason, count]) => ({ reason, count }));
+  const waveBreakdown = Object.entries(waveCounts).sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([wave, count]) => ({ wave, count }));
+
+  const sourceCounts: Record<string, number> = {};
+  for (const img of images) {
+    const s = img.ocrProvider ?? "unknown";
+    sourceCounts[s] = (sourceCounts[s] ?? 0) + 1;
+  }
+  const sourceBreakdown = Object.entries(sourceCounts).map(([source, count]) => ({ source, count }));
+
+  return NextResponse.json({
+    rows,
+    totals: { ...totals, overallAccuracyPercent, rescueRate, needsReviewRate },
+    reasonTop,
+    waveBreakdown,
+    sourceBreakdown,
+  });
 }
