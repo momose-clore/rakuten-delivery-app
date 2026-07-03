@@ -51,6 +51,15 @@ export async function autoRescueRows(rows: NormalizedDispatchRow[]): Promise<Res
       }
     }
 
+    // 1b. W番号救済（配車No W#-#-# から復元）
+    if (!row.waveNo && row.dispatchKey) {
+      const m = row.dispatchKey.match(/^W([1-6])-/);
+      if (m) {
+        (row as NormalizedDispatchRow).waveNo = `W${m[1]}`;
+        wasRescued = true;
+      }
+    }
+
     // 2. 伝票No再試行（住所・メモから抽出）
     if (!row.invoiceNo) {
       const retried = extractInvoiceNo([row.address ?? "", row.memo ?? ""].join(" "));

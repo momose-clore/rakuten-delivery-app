@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { DeliveryItem } from "@/types/dispatch";
+import { REVIEW_REASON_DETAILS, type DeliveryItem } from "@/types/dispatch";
 import { ReviewReasonBadge, parseReviewReasons, rowHighlight } from "./ReviewReasonBadge";
 import { PredictionBadge } from "./PredictionBadge";
 
@@ -26,6 +26,8 @@ export function DeliveryItemRow({ item, dispatchImageId, onSaved }: DeliveryItem
 
   const reasons = parseReviewReasons(item.ocrNotes);
   const highlight = rowHighlight(reasons);
+  const countSum = (item.normalOriconCount ?? 0) + (item.coolerBoxCount ?? 0) + (item.caseCount ?? 0);
+  const countDiff = countSum - (item.totalCount ?? 0);
 
   function startEdit() {
     setDraft({
@@ -109,13 +111,25 @@ export function DeliveryItemRow({ item, dispatchImageId, onSaved }: DeliveryItem
       {field("caseCount", "ケース", "number")}
       {field("totalCount", "総数", "number")}
       {field("memo", "備考")}
-      <td className="px-3 py-2">
+      <td className="px-3 py-2 max-w-[240px]">
         <div className="flex flex-col gap-1">
           <ReviewReasonBadge reasons={reasons} />
           <PredictionBadge
             fieldStatusJson={item.fieldStatusJson}
             predictionWarningsJson={item.predictionWarningsJson}
           />
+          {reasons.length > 0 && (
+            <ul className="mt-0.5 space-y-0.5">
+              {reasons.filter((r) => r !== "AUTO_CORRECTED_BY_HISTORY").map((r) => (
+                <li key={r} className="text-[10px] text-gray-500 leading-tight">・{REVIEW_REASON_DETAILS[r]}</li>
+              ))}
+              {reasons.includes("COUNT_MISMATCH") && (
+                <li className="text-[10px] font-medium text-orange-600 leading-tight">
+                  内訳計 {countSum} ≠ 総数 {item.totalCount ?? 0}（差 {countDiff > 0 ? "+" : ""}{countDiff}）
+                </li>
+              )}
+            </ul>
+          )}
         </div>
       </td>
       <td className="px-3 py-2 whitespace-nowrap">

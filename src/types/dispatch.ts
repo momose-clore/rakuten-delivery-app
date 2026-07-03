@@ -30,6 +30,20 @@ export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
   AUTO_CORRECTED_BY_HISTORY:  "履歴から自動補正",
 };
 
+/** 要確認理由の詳細説明（レビュー効率化・#9） */
+export const REVIEW_REASON_DETAILS: Record<ReviewReason, string> = {
+  DISPATCH_KEY_MISSING:       "配車No（W番号-号車-順）が読み取れませんでした。原本を確認して入力してください。",
+  WAVE_NO_MISSING:            "W番号が読み取れませんでした。",
+  VEHICLE_NO_MISSING:         "号車番号が読み取れませんでした。",
+  ADDRESS_EMPTY:              "住所が空欄です。配送に必須のため確認してください。",
+  ADDRESS_SUSPECT:            "住所の構造が弱く、市区町村や番地が欠けている可能性があります。",
+  PHONE_INVALID:              "電話番号の形式が不自然です（住所列からの混入の可能性）。",
+  COUNT_MISMATCH:             "常温+クーラー+ケースの合計が総数と一致していません。",
+  INVOICE_DUPLICATE:          "同じ伝票Noが他の行と重複しています。",
+  INVOICE_MISSING:            "伝票Noが読み取れませんでした。",
+  AUTO_CORRECTED_BY_HISTORY:  "自動救済で補正済みです。念のため内容を確認してください。",
+};
+
 export interface DeliveryItem {
   id: string;
   dispatchImageId: string;
