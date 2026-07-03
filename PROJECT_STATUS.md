@@ -1,7 +1,7 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-07-03（クルー新デザイン本番稼働・カメラ/PDF取込・フォロー実装・OCR精度改善）
+> 最終更新: 2026-07-03（OCR v6 強化中：高解像度前処理・画像品質チェック・誤読辞書拡張）
 
 ---
 
@@ -1546,7 +1546,9 @@ npm run db:seed:prod
 | 2026-07-03 | テストドライバー | GET /api/admin/setup/test-driver（ADMIN or ?token=）でテストドライバー(test-driver@delivery-app.local/driver1234)＋本日サンプル配送3件を作成。本番動作確認用（用済み後削除推奨） |
 | 2026-07-03 | スマホ対応強化 | viewport-fit=cover(iPhoneセーフエリア)・themeColor・lang=ja・apple-web-app・HEIC→JPEG正規化(sharp) |
 | 2026-07-03 | OCR精度改善 | カメラ前処理強化(2600px化・CLAHE局所コントラスト・sharpen強化)。スキャンPDFはEngine1(PDF対応)＋テキスト解析フォールバック＋エラー可視化。OCR.space1画像1回の方針は不変 |
-
+| 2026-07-03 | OCR v6-1 画像品質 | image-quality に領域解析実装(右端切れ/上部の影/白飛び/下部余白・縮小画像で高速化)。mobile-quality-checkのTODO実装。カメラUIに撮影枠ガイド。/driver/camera・/admin camera対応 |
+| 2026-07-03 | OCR v6-2 前処理設定化 | 前処理を環境変数で調整可能に(OCR_PREPROCESS_TARGET_LONG_EDGE=3600等)。長辺3600px化・CLAHE・sharpen・payload保護・前処理メタ(originalWidth等)返却。preprocessImageForOcrDetailed追加。送信は1画像1回のまま |
+| 2026-07-03 | OCR v6-3 誤読辞書 | misread-dictionary拡張: S→5・B→8・|→1・全角/各種ハイフン統一。数値/コード欄(配車No/伝票No/電話/数量)限定で氏名・住所は非対象。全OCR経路に反映 |
 ---
 
 ## ✅ 予測値・推定値の誤適用対策（実装完了）
