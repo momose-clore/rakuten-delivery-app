@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ShiftSummaryCard } from "./ShiftSummaryCard";
 import { CarioConnectionBanner } from "./CarioConnectionBanner";
@@ -22,6 +22,47 @@ export function ShiftImportClient() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [approving, setApproving] = useState(false);
+
+  // ── リアルタイム（ポーリング）─────────────────────────────
+  const REALTIME_INTERVAL_MS = 30_000;
+  const [realtime, setRealtime] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const inFlight = useRef(false);
+
+  /** リアルタイム取得（CARIO最新→DB同期→一覧反映）。ポーリングと手動更新で共用。 */
+  const fetchRealtime = useCallback(async (targetDate: string) => {
+    if (inFlight.current) return; // 前回の取得が未完なら重複させない
+    inFlight.current = true;
+    try {
+      const res = await fetch(`/api/shifts/realtime?date=${targetDate}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? "リアルタイム取得に失敗しました");
+        return;
+      }
+      const body = await res.json();
+      setDrivers(body.drivers ?? []);
+      setConnection(body.connection ?? null);
+      setSyncedAt(body.syncedAt ?? null);
+      setError(body.syncError ?? "");
+    } catch {
+      setError("リアルタイム取得に失敗しました");
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
+
+  // realtime ON の間だけ、対象日を定期ポーリング（即時1回＋30秒間隔）
+  useEffect(() => {
+    if (!realtime || !date) return;
+    const run = () => fetchRealtime(date);
+    const first = setTimeout(run, 0); // 初回取得（effect同期実行を避ける）
+    const timer = setInterval(run, REALTIME_INTERVAL_MS);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [realtime, date, fetchRealtime]);
 
   async function handleImport() {
     setImporting(true);
@@ -140,6 +181,34 @@ export function ShiftImportClient() {
             {loading ? "取得中..." : "一覧を表示"}
           </Button>
         </div>
+
+        {/* リアルタイム連携トグル */}
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-4">
+          <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={realtime}
+              onChange={(e) => setRealtime(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-sm font-medium text-gray-700">リアルタイム連携</span>
+          </label>
+          {realtime && (
+            <span className="inline-flex items-center gap-1.5 text-xs text-green-700">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+              </span>
+              自動更新中（30秒間隔）
+            </span>
+          )}
+          {syncedAt && (
+            <span className="text-xs text-gray-400">
+              最終同期 {new Date(syncedAt).toLocaleTimeString("ja-JP")}
+            </span>
+          )}
+        </div>
+
         {error && (
           <p className="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>
         )}
