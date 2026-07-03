@@ -1,7 +1,23 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-07-03（本番OCRキー登録・実PDF反映を本番検証済／スキャンPDF強化）
+> 最終更新: 2026-07-03（セキュリティ全体監査＋Critical/High修復・監視運用開始）
+
+---
+
+## 🔒 セキュリティ監査＆修復（2026-07-03 開始・以降 日次監視）
+
+全体監査を実施（詳細: `docs/SECURITY_AUDIT.md`）。Critical 1・High 5・Medium 4・Low 3 を検出。
+
+**即修復済（本番ビルド通過）**:
+- **C1 Critical**: `test-driver` API の `?token=clore-setup-2026` 未認証バイパスを撤去 → **常に ADMIN セッション必須**（既知パスドライバー作成・未認証データ削除が可能だった）。
+  - ⚠️ 影響: テストデータ消し込みは `?action=cleanup` に**ADMINログインが必要**になった（旧 `&token=` は無効）。
+- **H1**: LINE Webhook を本番 fail-closed 化（secret未設定なら偽造イベント受理を拒否）。
+- **H2**: カメラOCR `process` の SSRF 対策（`imageUrl` を Vercel Blob ホストのみ許可）。
+- **H3**: セキュリティヘッダー追加（CSP/HSTS/X-Frame-Options/nosniff/Referrer/Permissions）。
+- **L1**: cron の CRON_SECRET 比較を `timingSafeEqual` に統一。
+
+**要判断/未対応（優先度順）**: H4 レート制限なし / H5 `xlsx@0.18.5` 脆弱版差替 / M1 err.message漏れ / M2 Postgres SSL強制 / M3 next-auth beta固定 / L2 画像 Content-Disposition。
 
 ---
 
@@ -35,7 +51,26 @@
 
 **カメラ経路 本番検証**: upload→process→本日配送に3件反映（配車No W6-11-1/2/3・住所・ナビURL・layoutProfile=l1m_cargo_list）。
 
-**残課題（軽微）**: 数量(常温/クーラー/ケース/箱計)は空欄/0セルのOCR取りこぼしで実数と差異が出ることあり（サマリー総数とのクロスチェックで検知）。要・実運用データでの追調整。
+### OCR読取精度 大幅改善（2026-07-03・実PDFで検証）
+実PDF（L1M・3配送）を正解データに、実モジュール（前処理→OCR.space→パーサー）で計測。
+
+| 項目 | 旧方式 | 新方式 |
+|---|---|---|
+| 行復元 | 0/3（生PDF→Engine1は表崩れ／422） | 3/3 |
+| 配車No | 0/3 | 3/3 |
+| 伝票No | 0/3 | 3/3 |
+| 電話 | 0/3 | 3/3 |
+| 数量(常温/クーラー/ケース/箱計) | 0/3 | 3/3 |
+| 住所 | 0/3 | 3/3（地名取得。うち厳密一致2/3・1件は漢字OCR誤読） |
+
+**効いた修正**（すべて実データ観察ベース）:
+- スキャンPDFは埋め込み画像抽出→Engine2（生PDF→Engine1は表構造崩壊）
+- ブロック分割を「配車No行−upShift」のy境界に（伝票No行が配車No行の少し上に来る問題を解消）
+- 伝票No＝中央語数字連結から `20XX+13桁` を直接抽出／電話＝連絡先行のy帯で語結合（`090-1552-3598`の語分割対応）／住所＝連絡先行の直下をy座標結合
+- 数量＝実測列中心[常温67/クーラー78/ケース88/箱計97%]の最寄り割当（空セルのズレ解消）、境界0.76→0.63
+- 前処理解像度 TARGET3600→4000・MAX4200→6000、ペイロード保護を「解像度優先」に（潰れた小文字対策・grayscaleなら6000px級でも1MB以下を実測）
+
+**残課題（軽微）**: 住所は稀に地名漢字のOCR誤読あり（GODOOR不使用のため Google Geocoding＋overrideで補正する方針）。実運用データが増えたら誤読辞書・列中心を追調整。
 
 ---
 
@@ -1890,3 +1925,10 @@ npm run db:seed:prod
 - env追加: `LINE_EXTRA_VEHICLE_GROUP_ID`（.env.local設定済・値マスク）
 - 専用グループへの送信テスト成功（HTTP200）。管理画面ボタンは dev(:3001) 再起動で env 反映後に動作
 - `npm run typecheck` ✅ / `npm run lint` ✅
+
+### ③-確定6 ローカルDB構築＆増便フルスタック疎通
+- Docker/brew無環境のため **embedded-postgres**（/tmp/epg・PostgreSQL18・localhost:5432）でローカルDB構築
+- `DATABASE_URL` を `.env.local` に設定 → `prisma migrate deploy`（全migration適用・増便テーブル含む）→ seed（admin/driver）
+- 動作確認: 外部pull API `GET /api/external/extra-vehicle-requests`（Bearer）が増便1件を返却・`reportText="石毛 6W 増便申請が届きました"`・HTTP200＝**アプリ→DB接続OK**
+- dev seedログイン: admin@delivery-app.local / admin1234（詳細は memory: project_local_dev_db）
+- EXTRA_VEHICLE_PULL_TOKEN をローカル検証用に発行・.env.local設定済
