@@ -11,6 +11,14 @@
 /** デフォルトタイムアウト（環境変数 CARIO_TIMEOUT_MS で上書き可） */
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/** CARIO API のデフォルト BaseURL（CARIO_API_BASE_URL 未設定時に使用） */
+const DEFAULT_BASE_URL = "https://cario-app-two.vercel.app";
+
+/** BaseURL を解決する（環境変数優先・未設定ならデフォルト） */
+function getBaseUrl(): string {
+  return process.env.CARIO_API_BASE_URL ?? DEFAULT_BASE_URL;
+}
+
 function getTimeoutMs(): number {
   return parseInt(process.env.CARIO_TIMEOUT_MS ?? String(DEFAULT_TIMEOUT_MS), 10);
 }
@@ -64,10 +72,7 @@ async function fetchWithTimeout(
  * @param path  例: "/drivers" or "/shifts?date=2026-01-01"
  */
 export async function carioGet<T>(path: string): Promise<T> {
-  const baseUrl = process.env.CARIO_API_BASE_URL;
-  if (!baseUrl) {
-    throw new CarioApiError("CARIO_API_BASE_URL が設定されていません", 0, "AUTH");
-  }
+  const baseUrl = getBaseUrl();
 
   let res: Response;
   try {
@@ -114,7 +119,7 @@ export async function fetchRakutenAssignments(params: {
   from: string;
   to: string;
 }): Promise<unknown> {
-  const baseUrl = process.env.CARIO_API_BASE_URL ?? "https://cario-app-two.vercel.app";
+  const baseUrl = getBaseUrl();
   const path =
     process.env.CARIO_ASSIGNMENTS_PATH ?? "/api/external/rakuten/assignments";
 
@@ -200,12 +205,13 @@ export async function fetchRakutenAssignments(params: {
   return data;
 }
 
-/** CARIO API が設定済みかチェック（RAKUTEN_APP_API_KEY または CARIO_API_KEY） */
+/**
+ * CARIO API が設定済みかチェック。
+ * BaseURL はデフォルト値があるため、APIキー（RAKUTEN_APP_API_KEY / CARIO_API_KEY）の
+ * 有無のみで判定する。CARIO側は「キー登録のみ」で有効化する運用のため。
+ */
 export function isCarioApiConfigured(): boolean {
-  return !!(
-    process.env.CARIO_API_BASE_URL &&
-    (process.env.RAKUTEN_APP_API_KEY ?? process.env.CARIO_API_KEY)
-  );
+  return !!(process.env.RAKUTEN_APP_API_KEY ?? process.env.CARIO_API_KEY);
 }
 
 /** 接続モードを判定（UI表示用） */

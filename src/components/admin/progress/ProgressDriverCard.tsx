@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { DriverProgress, DeliveryProgress } from "@/types/progress";
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -73,12 +74,20 @@ export function ProgressDriverCard({ driver, date }: Props) {
           </div>
         </div>
 
-        <button
-          onClick={toggleDetail}
-          className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-50 shrink-0"
-        >
-          {open ? "閉じる" : "詳細"}
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={toggleDetail}
+            className="text-xs px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+          >
+            {open ? "閉じる" : "詳細"}
+          </button>
+          <Link
+            href={`/admin/progress/${driver.driverId}?date=${date}`}
+            className="text-xs px-2 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
+          >
+            個別ページ
+          </Link>
+        </div>
       </div>
 
       {/* ステータス集計 */}

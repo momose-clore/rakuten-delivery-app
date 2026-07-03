@@ -1,5 +1,8 @@
 import Link from "next/link";
 
+// 管理画面の取込センターは PDF と CSV/Excel のみを表示する方針（運用判断）。
+// 画像OCR・貼付・スマホカメラOCR は当面 UI 非表示。コード/ルート/API は残しているため、
+// 下の HIDDEN_IMPORT_METHODS を IMPORT_METHODS に戻せば即再表示できる。
 const IMPORT_METHODS = [
   {
     id: "pdf",
@@ -17,6 +20,10 @@ const IMPORT_METHODS = [
     href: "/admin/dispatch-import/file",
     available: true,
   },
+];
+
+// UI 非表示（コード・ルートは保持。再表示する場合は IMPORT_METHODS に含める）
+const HIDDEN_IMPORT_METHODS = [
   {
     id: "paste",
     title: "表データ貼り付け",
@@ -42,6 +49,7 @@ const IMPORT_METHODS = [
     available: true,
   },
 ];
+void HIDDEN_IMPORT_METHODS;
 
 export default function DispatchImportPage() {
   return (
@@ -49,7 +57,7 @@ export default function DispatchImportPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">配送表取込</h1>
         <p className="mt-1 text-sm text-gray-500">
-          L1M貨物一覧表／配車予定表を、どの形式からでも取り込めます
+          L1M貨物一覧表／配車予定表を、PDF または CSV / Excel から取り込めます
         </p>
       </div>
 

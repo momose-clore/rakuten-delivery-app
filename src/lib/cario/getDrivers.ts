@@ -16,9 +16,13 @@ import { mapApiDrivers } from "./mapper";
 export async function fetchCarioDrivers(date: Date): Promise<CarioDriver[]> {
   if (isCarioApiConfigured()) {
     try {
-      // TODO: エンドポイント・クエリパラメータはCARIO実API仕様に合わせて調整
-      const dateStr = date.toISOString().split("T")[0];
-      const records = await carioGet<unknown[]>(`/drivers?date=${dateStr}`);
+      // 実API: GET /api/external/rakuten/drivers → { drivers: [...] }
+      // ?all=1 で楽天現場所属に限らず全DAを取得（既定は現場所属のみ）
+      void date; // 実APIは日付で絞り込まない（全DA一覧を返す）
+      const res = await carioGet<{ drivers?: unknown[] } | unknown[]>(
+        "/api/external/rakuten/drivers"
+      );
+      const records = Array.isArray(res) ? res : (res.drivers ?? []);
       return mapApiDrivers(records as Record<string, unknown>[]);
     } catch (err) {
       if (err instanceof CarioApiError) {

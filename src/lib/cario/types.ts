@@ -17,14 +17,22 @@ export interface CarioShift {
   status: "CONFIRMED" | "TENTATIVE" | "ABSENT";
 }
 
-// CARIO assignments API から取得する割当情報（v1.0追加）
+// CARIO assignments API から取得する割当情報（v1.0確定・実レスポンス準拠）
+// 実レスポンス: { id, work_date, driver:{id,name,phone,line_user_id},
+//   external_driver_name, site:{id,name,flow_type,wave_count},
+//   course:{id,name,terminal_no}, note, created_at }
 export interface CarioAssignment {
-  carioDriverId: string;
-  driverName: string | null;
-  deliveryDate: string;    // "YYYY-MM-DD"
-  waveNo: string | null;
-  vehicleNo: string | null;
-  routeNo: string | null;
+  assignmentId: string;      // 割当ID（assignment.id）
+  carioDriverId: string;     // driver.id（外部ドライバー時は空文字）
+  driverName: string | null; // driver.name ?? external_driver_name
+  deliveryDate: string;      // work_date "YYYY-MM-DD"
+  waveNo: string | null;     // 現状APIに無し（将来用）
+  vehicleNo: string | null;  // course.name（例: "12号車"）
+  routeNo: string | null;    // course.name（vehicleNo と同値・別名参照用）
+  siteId: string | null;     // site.id
+  siteName: string | null;   // site.name
+  courseId: string | null;   // course.id
+  note: string | null;       // 備考
   assignmentStatus: "ASSIGNED" | "COMPLETED" | "UNKNOWN";
 }
 

@@ -4,28 +4,36 @@
  * 危険な補正は POSSIBLE_MISREAD として ocr_notes に記録するだけ。
  */
 
-/** 数字誤読補正（OCR頻出パターン） */
+/**
+ * 数字誤読補正（OCR頻出パターン）
+ * ※ correctDigitMisreads は「数値/コード欄専用」。氏名・住所には使わない。
+ */
 const DIGIT_CORRECTIONS: [RegExp, string][] = [
   [/[Oo０]/g, "0"],
-  [/[Ii１lｌ]/g, "1"],
+  [/[Ii１lｌ|｜!]/g, "1"],   // I,l,|,! → 1
   [/[Zz２]/g, "2"],
   [/[３]/g, "3"],
   [/[４]/g, "4"],
-  [/[５]/g, "5"],
+  [/[Ss５]/g, "5"],          // S → 5
   [/[６]/g, "6"],
   [/[７]/g, "7"],
-  [/[８]/g, "8"],
+  [/[Bb８]/g, "8"],          // B → 8
   [/[９]/g, "9"],
 ];
 
-/** 全角→半角変換 */
+/** 各種ハイフン/ダッシュを半角ハイフンに統一（安全・全欄OK） */
+export function normalizeHyphens(s: string): string {
+  return s.replace(/[ー−–—―‐－]/g, "-");
+}
+
+/** 全角→半角変換（英数） */
 export function toHalfWidth(s: string): string {
-  return s.replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) =>
+  return normalizeHyphens(s).replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) =>
     String.fromCharCode(c.charCodeAt(0) - 0xFEE0)
   );
 }
 
-/** 数字列内の誤読を補正（電話番号・伝票No・数量用） */
+/** 数字列内の誤読を補正（電話番号・伝票No・数量・配車No用。氏名/住所には使わない） */
 export function correctDigitMisreads(s: string): string {
   let r = toHalfWidth(s);
   for (const [pattern, replacement] of DIGIT_CORRECTIONS) {

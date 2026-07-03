@@ -18,8 +18,11 @@ export async function fetchCarioShifts(date: Date): Promise<CarioShift[]> {
 
   if (isCarioApiConfigured()) {
     try {
-      // TODO: エンドポイント・クエリパラメータはCARIO実API仕様に合わせて調整
-      const records = await carioGet<unknown[]>(`/shifts?date=${workDate}`);
+      // 実API: GET /api/external/rakuten/shift-requests?from&to → { from, to, requests: [...] }
+      const res = await carioGet<{ requests?: unknown[] } | unknown[]>(
+        `/api/external/rakuten/shift-requests?from=${workDate}&to=${workDate}`
+      );
+      const records = Array.isArray(res) ? res : (res.requests ?? []);
       return mapApiShifts(records as Record<string, unknown>[]);
     } catch (err) {
       if (err instanceof CarioApiError) {

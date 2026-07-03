@@ -50,36 +50,67 @@ export function mapApiShift(record: ApiRecord): CarioShift {
   };
 }
 
+/** ネストされたオブジェクト（driver / site / course）を安全に取り出す */
+function asObject(value: unknown): ApiRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as ApiRecord)
+    : null;
+}
+
+function strOrNull(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  return String(value);
+}
+
 /**
- * CARIO assignments API のレコードを CarioAssignment に変換する。
- * TODO: 実レスポンス確認後にフィールドマッピングを調整
+ * CARIO assignments API のレコードを CarioAssignment に変換する（実レスポンス準拠）。
+ *
+ * 実レスポンス構造:
+ *   { id, work_date, driver:{id,name,phone,line_user_id}, external_driver_name,
+ *     site:{id,name,flow_type,wave_count}, course:{id,name,terminal_no}, note }
+ *
+ * フラット形式（driver_id 直下など）にも後方互換で対応する。
  */
 export function mapApiAssignment(record: ApiRecord): CarioAssignment {
+  const driver = asObject(record.driver);
+  const site = asObject(record.site);
+  const course = asObject(record.course);
+
+  // driver.id を優先。フラット形式（driver_id）にもフォールバック
+  const carioDriverId = String(
+    driver?.id ?? record.driver_id ?? record.driverId ?? ""
+  );
+  const driverName =
+    strOrNull(driver?.name) ??
+    strOrNull(record.external_driver_name) ??
+    strOrNull(record.driver_name ?? record.driverName);
+
+  // course.name（例: "12号車"）を号車/ルート番号として扱う
+  const courseName = strOrNull(course?.name ?? record.vehicle_no ?? record.route_no);
+
+  // 割当は常に確定割当扱い（実APIに status フィールドは無い）
   const statusRaw = String(
-    record.status ?? record.assignment_status ?? record.assignmentStatus ?? "UNKNOWN"
+    record.status ?? record.assignment_status ?? record.assignmentStatus ?? "ASSIGNED"
   ).toUpperCase();
   const assignmentStatus: CarioAssignment["assignmentStatus"] =
-    statusRaw === "ASSIGNED"  ? "ASSIGNED"
-    : statusRaw === "COMPLETED" ? "COMPLETED"
-    : "UNKNOWN";
+    statusRaw === "COMPLETED" ? "COMPLETED"
+    : statusRaw === "UNKNOWN" ? "UNKNOWN"
+    : "ASSIGNED";
 
   return {
-    carioDriverId: String(record.driver_id ?? record.driverId ?? record.id ?? ""),
-    driverName: record.driver_name
-      ? String(record.driver_name)
-      : record.driverName ? String(record.driverName) : null,
+    assignmentId: String(record.id ?? ""),
+    carioDriverId,
+    driverName,
     deliveryDate: String(
-      record.delivery_date ?? record.deliveryDate ?? record.work_date ?? record.date ?? ""
+      record.work_date ?? record.delivery_date ?? record.deliveryDate ?? record.date ?? ""
     ),
-    waveNo: record.wave_no
-      ? String(record.wave_no)
-      : record.waveNo ? String(record.waveNo) : null,
-    vehicleNo: record.vehicle_no
-      ? String(record.vehicle_no)
-      : record.vehicleNo ? String(record.vehicleNo) : null,
-    routeNo: record.route_no
-      ? String(record.route_no)
-      : record.routeNo ? String(record.routeNo) : null,
+    waveNo: strOrNull(record.wave_no ?? record.waveNo),
+    vehicleNo: courseName,
+    routeNo: courseName,
+    siteId: strOrNull(site?.id ?? record.site_id),
+    siteName: strOrNull(site?.name),
+    courseId: strOrNull(course?.id),
+    note: strOrNull(record.note),
     assignmentStatus,
   };
 }
@@ -94,9 +125,57 @@ export function mapApiShifts(records: ApiRecord[]): CarioShift[] {
   return records.map(mapApiShift).filter((s) => s.carioDriverId !== "");
 }
 
-/** API レスポンス配列を CarioAssignment[] に変換 */
+/** API レスポンス配列を CarioAssignment[] に変換（外部ドライバー割当も保持） */
 export function mapApiAssignments(records: ApiRecord[]): CarioAssignment[] {
-  return records.map(mapApiAssignment).filter((a) => a.carioDriverId !== "");
+  return records.map(mapApiAssignment).filter((a) => a.assignmentId !== "");
+}
+
+/**
+ * assignments から drivers を導出する（driver.id で重複排除）。
+ * 実APIの assignment には driver 情報が埋め込まれているため、
+ * 別途 /drivers を叩かずドライバー upsert 対象を得られる。
+ * area には現場名（siteName）、vehicleId には号車（vehicleNo）を格納する。
+ */
+export function deriveDriversFromAssignments(assignments: CarioAssignment[]): CarioDriver[] {
+  const byId = new Map<string, CarioDriver>();
+  for (const a of assignments) {
+    if (!a.carioDriverId) continue; // 外部ドライバー（自社DAでない）は skip
+    if (!byId.has(a.carioDriverId)) {
+      byId.set(a.carioDriverId, {
+        carioDriverId: a.carioDriverId,
+        name: a.driverName ?? "",
+        phone: null,
+        companyName: null,
+        area: a.siteName,
+        vehicleId: a.vehicleNo,
+      });
+    }
+  }
+  return [...byId.values()];
+}
+
+/**
+ * assignments から shifts を導出する（driverId × work_date で重複排除）。
+ * 割当がある = その日の出勤確定とみなし CONFIRMED を立てる。
+ * 実APIに勤務時間は無いため startTime/endTime は null。
+ */
+export function deriveShiftsFromAssignments(assignments: CarioAssignment[]): CarioShift[] {
+  const seen = new Set<string>();
+  const shifts: CarioShift[] = [];
+  for (const a of assignments) {
+    if (!a.carioDriverId || !a.deliveryDate) continue;
+    const key = `${a.carioDriverId}__${a.deliveryDate}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    shifts.push({
+      carioDriverId: a.carioDriverId,
+      workDate: a.deliveryDate,
+      startTime: null,
+      endTime: null,
+      status: "CONFIRMED",
+    });
+  }
+  return shifts;
 }
 
 /**
@@ -171,13 +250,25 @@ export function mapRakutenAssignmentsResponse(response: unknown): {
     };
   }
 
-  // パターン3: { assignments: [...], drivers?: [...] }
+  // パターン3: { from, to, assignments: [...] }（楽天CARIO実API v1.0の主形式）
   if (Array.isArray(res.assignments)) {
-    const drivers = Array.isArray(res.drivers) ? mapApiDrivers(res.drivers as ApiRecord[]) : [];
+    const assignments = mapApiAssignments(res.assignments as ApiRecord[]);
+    // drivers が明示されていれば優先、無ければ assignments から導出
+    const drivers = Array.isArray(res.drivers)
+      ? mapApiDrivers(res.drivers as ApiRecord[])
+      : deriveDriversFromAssignments(assignments);
+    const shifts = Array.isArray(res.shifts)
+      ? mapApiShifts(res.shifts as ApiRecord[])
+      : deriveShiftsFromAssignments(assignments);
+
+    const externalCount = assignments.filter((a) => !a.carioDriverId).length;
+    if (externalCount > 0) {
+      warnings.push(`外部ドライバー割当 ${externalCount} 件（自社DA未登録のため取込対象外）`);
+    }
     return {
       drivers,
-      shifts:      [],
-      assignments: mapApiAssignments(res.assignments as ApiRecord[]),
+      shifts,
+      assignments,
       warnings,
       responseShape: "object.assignments",
     };

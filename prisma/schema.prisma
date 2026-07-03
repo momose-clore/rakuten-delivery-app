@@ -450,3 +450,34 @@ model DeliveryLocationOverride {
   @@index([normalizedAddress])
   @@map("delivery_location_overrides")
 }
+
+// ─────────────────────────────────────────────
+// 増便申請（管理者・ドライバー双方が申請 / 後でCARIO連携）
+// ─────────────────────────────────────────────
+
+model ExtraVehicleRequest {
+  id                 String    @id @default(cuid())
+  requestDate        DateTime  @map("request_date") @db.Date   // 対象日（例: 7/3）
+  depot              String                                     // 対象デポ（例: 美女木デポ）
+  waveNo             String    @map("wave_no")                  // 該当便（例: 6w）
+  vehicleCount       Int       @default(1) @map("vehicle_count")// 台数（例: 1台）
+  assignedDriverName String?   @map("assigned_driver_name")     // 割当先（例: 石毛）
+  reason             String                                     // 申請理由（自由記述・長文）
+  status             String    @default("pending")              // pending|approved|rejected
+  createdByUserId    String    @map("created_by_user_id")       // 申請者(User.id)
+  createdByRole      String    @map("created_by_role")          // ADMIN|DRIVER
+  createdByName      String?   @map("created_by_name")          // 申請者表示名
+  approvedByUserId   String?   @map("approved_by_user_id")
+  approvedAt         DateTime? @map("approved_at")
+  rejectedReason     String?   @map("rejected_reason")
+  // CARIO連携（後で実装。現状は not_sent 固定・送信ロジックは未接続）
+  carioSyncStatus    String    @default("not_sent") @map("cario_sync_status") // not_sent|pending|sent|failed
+  carioSentAt        DateTime? @map("cario_sent_at")
+  carioRequestId     String?   @map("cario_request_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([requestDate])
+  @@map("extra_vehicle_requests")
+}

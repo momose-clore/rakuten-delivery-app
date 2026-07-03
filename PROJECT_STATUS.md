@@ -26,7 +26,7 @@ CARIOとは別に新規開発するWebアプリ。
 | OCR | **OCR.space**（1画像1回・Gemini/AI/Cloud Vision 不使用） | — | `OCR_SPACE_API_KEY`（**本番: 必須**・未設定でOCR実行不可 / 開発: デモキー可） |
 | 地図 | Google Maps Geocoding API + Maps URL | — | 要 API キー |
 | 画像ストレージ | Vercel Blob | — | `@vercel/blob` 実装済み・要 `BLOB_READ_WRITE_TOKEN` |
-| CARIO連携 | REST API（フォールバック: モック） | — | 仕様確定後に `mapper.ts` 調整 |
+| CARIO連携 | 実REST API 接続済み（v1.0・キー未設定時のみモック） | ✅ | `assignments` 主力取込・疎通確認済 2026-07-03 |
 | 取込エンジン | **v5**（PDF/CSV/Excel/貼付/画像/スマホカメラ） | — | L1M専用プロファイル・自動救済・OCR.space |
 
 ---
@@ -819,8 +819,48 @@ npm run dev
 
 | # | 内容 |
 |---|---|
-| 1 | CARIO接続方式が確定したら `getDrivers.ts` / `getShifts.ts` の本体を差し替える |
-| 2 | `CARIO_API_BASE_URL` / `CARIO_API_KEY` 等の環境変数は接続方式確定後に設定 |
+| 1 | ~~CARIO接続方式が確定したら本体を差し替える~~ → ✅ 実API接続完了（下記参照） |
+| 2 | ~~`CARIO_API_BASE_URL` / `CARIO_API_KEY` を設定~~ → ✅ `RAKUTEN_APP_API_KEY` 設定で有効化 |
+
+---
+
+## STEP 5-B：CARIO 実API連携（✅ 完了・2026-07-03）
+
+**ステータス:** ✅ 全4エンドポイント疎通確認済み（HTTP 200）＋ 実レスポンス準拠 mapper 実装完了
+
+### 確定API仕様（v1.0）
+
+- Base: `https://cario-app-two.vercel.app/api/external/rakuten`（`client.ts` にデフォルト値。BaseURL 環境変数は省略可）
+- 認証: `Authorization: Bearer <RAKUTEN_APP_API_KEY>`
+- **キー1つ設定するだけで REAL_API モード有効**（CARIO側の運用に合わせ `isCarioApiConfigured()` はキーのみで判定）
+
+| エンドポイント | 用途 | レスポンス形状 |
+|---|---|---|
+| `GET /sites` | 楽天現場一覧 | `{sites:[{id,name,flow_type,wave_count,line_group_id,client}]}` |
+| `GET /drivers` (`?all=1`) | DA一覧 | `{drivers:[{id,name,phone,line_user_id,rank,driver_code,default_site_id,...}]}` |
+| `GET /shift-requests?from&to` | シフト希望 | `{from,to,requests:[]}`（現状空） |
+| `GET /assignments?from&to[&site_id]` | 割当（**主力取込**） | `{from,to,assignments:[{id,work_date,driver:{id,name,phone,line_user_id},external_driver_name,site:{...},course:{id,name,terminal_no},note}]}` |
+
+### mapper 実装のポイント（`src/lib/cario/mapper.ts`）
+
+- assignment は**ネスト構造**（`driver`/`site`/`course`）→ `mapApiAssignment` でフラット化。旧フラット形式にも後方互換。
+- assignments に driver が埋め込まれるため、**`/drivers` を別途叩かず** `deriveDriversFromAssignments`（driver.id で重複排除）／`deriveShiftsFromAssignments`（driver×work_date で重複排除、割当=CONFIRMED）でドライバー・シフトを導出。
+- `course.name`（例「12号車」）を `vehicleNo`/`routeNo` に、`site.name` を `area` に格納。
+- 外部ドライバー（`driver` が null で `external_driver_name` のみ）は取込対象外とし warning に件数を記録。
+
+### 疎通・導出検証結果（2026-07-03 / 2026-07-01〜07-31）
+
+- 4エンドポイント全て HTTP 200・認証成功
+- assignments 71件 → drivers 11名・shifts 71件（driver×日で重複なし）・外部0件 で mapper 導出ロジックと一致
+
+### 環境変数
+
+- `RAKUTEN_APP_API_KEY`: ローカル `.env.local` 設定済み／Vercel 本番も同名で登録済み（CARIOチーム対応済み）
+- `CARIO_API_BASE_URL` / `CARIO_ASSIGNMENTS_PATH`: 通常不要（デフォルト値あり）
+
+### 未実施（データ保護のため保留）
+
+- 実DBへの取込実行（`POST /api/shifts/import` は driver/shift を upsert する**書き込み**）は未実行。3ターミナル並行稼働中のため、承認後に対象日を指定して実行する。
 
 ---
 
