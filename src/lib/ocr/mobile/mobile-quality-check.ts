@@ -21,21 +21,18 @@ export async function assessMobileImageQuality(
   const warnings = [...base.warnings];
   const blockingReasons: string[] = [];
 
-  // スマホ撮影固有の警告
-  const rightEdgeCutRisk = false;  // TODO: 右端の単語密度で推定
-  const shadowOnHeader = false;    // TODO: 上部のコントラスト分析
-  const largeBottomMargin = false; // TODO: 下部の空白比率
+  // スマホ撮影固有の警告（image-quality の領域解析結果を利用）
+  const rightEdgeCutRisk = base.rightEdgeCutRisk;
+  const shadowOnHeader = base.topShadow;
+  const largeBottomMargin = base.bottomBlankRatio > 0.9;
   const backgroundNoise = base.contrast === "low";
 
-  if (backgroundNoise) warnings.push("BACKGROUND_NOISE");
+  if (largeBottomMargin) warnings.push("表が上に寄っています。表全体を画面いっぱいに写すと精度が上がります。");
   if (base.blur === "blurry") {
     blockingReasons.push("画像がぼやけています。再撮影してください。");
   }
   if (base.brightness === "too_dark") {
     blockingReasons.push("画像が暗すぎます。明るい場所で撮影してください。");
-  }
-  if (base.resolution === "low") {
-    warnings.push("TEXT_TOO_SMALL");
   }
 
   // captureMode 固有チェック

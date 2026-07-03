@@ -3,8 +3,8 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
 
-// セットアップ用トークン（管理者ログイン無しでも ?token= で実行可能にする一時手段）
-const SETUP_TOKEN = "clore-setup-2026";
+// セットアップ用トークン（テスト期間中は有効。テスト完了後にこのAPIごと削除推奨）
+const SETUP_TOKEN: string | null = "clore-setup-2026";
 
 /**
  * テスト用ドライバーアカウント＋本日のサンプル配送を作成する（冪等）。
@@ -15,9 +15,10 @@ const SETUP_TOKEN = "clore-setup-2026";
  */
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
-  if (token !== SETUP_TOKEN) {
+  const tokenValid = SETUP_TOKEN !== null && token === SETUP_TOKEN;
+  if (!tokenValid) {
     const session = await auth();
-    if (!session) return NextResponse.json({ error: "認証が必要です（管理者ログイン、または ?token= を付けてください）" }, { status: 401 });
+    if (!session) return NextResponse.json({ error: "管理者でログインしてください" }, { status: 401 });
     if (session.user.role !== "ADMIN") return NextResponse.json({ error: "管理者のみ実行できます" }, { status: 403 });
   }
 

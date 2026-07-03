@@ -120,6 +120,17 @@ export function MobileCameraImportPage({
         <h1 className="text-xl font-bold text-gray-900">配送表を撮影してください</h1>
         {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>}
 
+        {/* 撮影枠ガイド */}
+        <div className="relative w-full aspect-[3/4] rounded-2xl bg-blue-50/50 flex items-center justify-center">
+          <span className="absolute top-2 left-2 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-lg" />
+          <span className="absolute top-2 right-2 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-lg" />
+          <span className="absolute bottom-2 left-2 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-lg" />
+          <span className="absolute bottom-2 right-2 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-lg" />
+          <p className="text-sm text-blue-700 text-center px-6 leading-relaxed font-medium">
+            配送表の<b>四隅をこの枠</b>に合わせて<br />明るい場所で<b>真上から</b>撮影
+          </p>
+        </div>
+
         <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
           onChange={handleFileSelect} className="hidden" />
 
