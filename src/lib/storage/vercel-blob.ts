@@ -20,7 +20,12 @@ export const vercelBlobProvider: StorageProvider = {
     const token = process.env.BLOB_READ_WRITE_TOKEN;
     if (!token) throw new Error("BLOB_READ_WRITE_TOKEN が設定されていません");
 
-    const blob = await put(`${BLOB_PREFIX}/${filename}`, buffer, {
+    // sharp の .toBuffer() 等は SharedArrayBuffer 裏付けの Buffer を返すことがあり、
+    // put() 内部の fetch が「SharedArrayBuffer is not allowed」で失敗する。
+    // Buffer.from でデータを通常の ArrayBuffer 裏付けにコピーしてから送信する。
+    const body = Buffer.from(buffer);
+
+    const blob = await put(`${BLOB_PREFIX}/${filename}`, body, {
       access: "public",
       token,
     });
