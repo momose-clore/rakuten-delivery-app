@@ -1,5 +1,5 @@
 import { requireAdmin } from "@/lib/auth/permissions";
-import { Sidebar } from "@/components/admin/Sidebar";
+import { AdminShell } from "@/components/admin/AdminShell";
 
 export default async function AdminLayout({
   children,
@@ -8,10 +8,5 @@ export default async function AdminLayout({
 }) {
   await requireAdmin();
 
-  return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <main className="flex-1 bg-gray-50 p-6 overflow-auto">{children}</main>
-    </div>
-  );
+  return <AdminShell>{children}</AdminShell>;
 }
