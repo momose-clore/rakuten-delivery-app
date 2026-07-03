@@ -25,6 +25,7 @@ export interface CarioAssignment {
   assignmentId: string;      // 割当ID（assignment.id）
   carioDriverId: string;     // driver.id（外部ドライバー時は空文字）
   driverName: string | null; // driver.name ?? external_driver_name
+  driverPhone: string | null; // driver.phone
   deliveryDate: string;      // work_date "YYYY-MM-DD"
   waveNo: string | null;     // 現状APIに無し（将来用）
   vehicleNo: string | null;  // course.name（例: "12号車"）

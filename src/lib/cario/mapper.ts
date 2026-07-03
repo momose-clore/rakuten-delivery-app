@@ -101,6 +101,7 @@ export function mapApiAssignment(record: ApiRecord): CarioAssignment {
     assignmentId: String(record.id ?? ""),
     carioDriverId,
     driverName,
+    driverPhone: strOrNull(driver?.phone ?? record.phone),
     deliveryDate: String(
       record.work_date ?? record.delivery_date ?? record.deliveryDate ?? record.date ?? ""
     ),
@@ -144,7 +145,7 @@ export function deriveDriversFromAssignments(assignments: CarioAssignment[]): Ca
       byId.set(a.carioDriverId, {
         carioDriverId: a.carioDriverId,
         name: a.driverName ?? "",
-        phone: null,
+        phone: a.driverPhone,
         companyName: null,
         area: a.siteName,
         vehicleId: a.vehicleNo,
