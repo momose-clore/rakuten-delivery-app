@@ -72,7 +72,10 @@
 - 記法: `- [ ] (YYYY-MM-DD 依頼元→α) 内容 / 対象パス`。完了時は α が `[x]` にし結果を追記。
 - α の適用方針: 通常のα領域（レイアウト/地図/API契約/セキュリティ監視データ）は実行。**セキュリティのコード修復（対策）は人間の明示指示がある時のみ**（既定は監視・レポートのみ）。DB・既存データは変更しない。commit はパス明示のみ。
 
-**現在の依頼（未処理）**: なし（2026-07-03 時点で β/γ からの α宛依頼なし）
+**処理済み**:
+- [x] (2026-07-03 γ→α) GPS機能一式をパス明示コミット → **完了**。`e98351e` で DriverLocation モデル＋migration `20260703170000`＋live-map/tracker/API/privacy を commit、origin/main に反映済（`prisma migrate deploy` で本番テーブル作成＝GPS系API 500 リスク解消）。ビルド✅。※共有index並行操作で manifest.ts/ブランドロゴ/preview+1行 を巻き込み（追加のみ・無害）。next.config CSP とセキュリティ修正は方針どおり未コミット保留。
+
+**現在の依頼（未処理）**: なし
 
 ## 🧭 γ発：全体の詰まり所ヒアリング＆改善指示（2026-07-03）
 
@@ -121,3 +124,4 @@ node scripts/terminals.mjs --watch   # 5秒ごと更新
 - **共有作業ツリー**のため `git commit -am` / `git add -A` は他ターミナルの中途変更・削除を巻き込む。**パス明示コミット**を徹底（過去に実際に巻き込み事故あり）。
 - `DATABASE_URL` はVercel Sensitiveで `vercel env pull` では空。ローカルからの本番DB直書き不可。
 - CARIOサーバー同期は cron-job.org(1分・主)＋GitHub Actions(5分・GitHub都合で間引き・予備)＋Vercel Cron(日次・予備)。
+- **許可ポリシー（2026-07-03 γ設定 / α要レビュー）**: `.claude/settings.json` に `permissions` を追加し Yes/No確認を削減。`defaultMode: acceptEdits`＋git/npm/node/read系等の安全コマンドを allow、破壊系（`rm -rf /*`・`git push --force`・`prisma migrate reset`・`prisma db push --force-reset`）は deny 維持。全ターミナル共通・**Claude 再起動で反映**。強/弱の調整は α/ユーザー判断で可。
