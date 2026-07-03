@@ -4,9 +4,32 @@
  * API設定済み → fetchRakutenAssignments() を使用
  * API未設定   → モックデータにフォールバック（開発環境のみ）
  */
-import { fetchRakutenAssignments, isCarioApiConfigured } from "./client";
+import { fetchRakutenAssignments, isCarioApiConfigured, CarioApiError } from "./client";
 import { mapRakutenAssignmentsResponse } from "./mapper";
 import type { CarioDriver, CarioShift, CarioAssignment } from "./types";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 一過性エラー（TIMEOUT/SERVER/NETWORK）は指数バックオフで再試行。AUTHは即時失敗。 */
+async function fetchWithRetry(
+  params: { from: string; to: string; siteId?: string },
+  maxRetries = 2
+): Promise<unknown> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchRakutenAssignments(params);
+    } catch (err) {
+      lastErr = err;
+      const transient =
+        err instanceof CarioApiError &&
+        (err.type === "TIMEOUT" || err.type === "SERVER" || err.type === "NETWORK");
+      if (!transient || attempt === maxRetries) throw err;
+      await sleep(300 * 2 ** attempt); // 300ms, 600ms
+    }
+  }
+  throw lastErr;
+}
 
 export interface RakutenAssignmentsResult {
   drivers:      CarioDriver[];
@@ -38,7 +61,7 @@ export async function fetchAssignmentsForRange(
     };
   }
 
-  const raw = await fetchRakutenAssignments({ from, to: toDate, siteId });
+  const raw = await fetchWithRetry({ from, to: toDate, siteId });
   const mapped = mapRakutenAssignmentsResponse(raw);
 
   return { ...mapped, usedMock: false };
