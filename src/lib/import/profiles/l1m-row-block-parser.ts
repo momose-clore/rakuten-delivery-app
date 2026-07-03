@@ -72,8 +72,51 @@ function canonicalizeL1MAddress(raw: string): string {
   return (afterPref + before).replace(zip, "");
 }
 
-/** OCR単語から L1M 明細ブロックを抽出 */
+/** 単語座標を画像回転（90/180/270°）に合わせて変換する。カメラの横向き/上下逆撮影対応。 */
+function rotateWords(words: OcrWord[], W: number, H: number, deg: 90 | 180 | 270): OcrWord[] {
+  return words.map((w) => {
+    if (deg === 90) {
+      // 時計回り90°：新画像は H×W。 (left,top)→(H-top-height, left)
+      return { text: w.text, left: H - w.top - w.height, top: w.left, width: w.height, height: w.width };
+    } else if (deg === 270) {
+      // 反時計回り90°： (left,top)→(top, W-left-width)
+      return { text: w.text, left: w.top, top: W - w.left - w.width, width: w.height, height: w.width };
+    } else {
+      // 180°： (left,top)→(W-left-width, H-top-height)
+      return { text: w.text, left: W - w.left - w.width, top: H - w.top - w.height, width: w.width, height: w.height };
+    }
+  });
+}
+
+/**
+ * OCR単語から L1M 明細ブロックを抽出。
+ * カメラ写真は横向き/上下逆で撮られることがあり、座標ベース解析が破綻するため、
+ * 0/90/180/270° の4方向を試し（再OCRなし・座標変換のみ）、配車Noブロックが最も多く
+ * 復元できた向きを採用する。
+ */
 export function parseL1MRowBlocks(
+  words: OcrWord[],
+  imageWidth: number,
+  imageHeight: number,
+  meta: L1MMetadata
+): NormalizedDispatchRow[] {
+  const trials: Array<{ w: OcrWord[]; W: number; H: number }> = [
+    { w: words, W: imageWidth, H: imageHeight },
+    { w: rotateWords(words, imageWidth, imageHeight, 90), W: imageHeight, H: imageWidth },
+    { w: rotateWords(words, imageWidth, imageHeight, 270), W: imageHeight, H: imageWidth },
+    { w: rotateWords(words, imageWidth, imageHeight, 180), W: imageWidth, H: imageHeight },
+  ];
+  let best: NormalizedDispatchRow[] = [];
+  for (const t of trials) {
+    const rows = parseBlocksAtOrientation(t.w, t.W, t.H, meta);
+    if (rows.length > best.length) best = rows;
+    // 最初（無回転）で十分な件数が取れたら回転は試さない（通常のPDF/正立画像）
+    if (t === trials[0] && rows.length >= 2) return rows;
+  }
+  return best;
+}
+
+function parseBlocksAtOrientation(
   words: OcrWord[],
   imageWidth: number,
   imageHeight: number,
