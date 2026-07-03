@@ -47,7 +47,7 @@ interface RawResponse {
   SearchablePDFURL?: string;
 }
 
-export async function runOcrSpace(imageBuffer: Buffer): Promise<OcrSpaceResult> {
+export async function runOcrSpace(imageBuffer: Buffer, mime: string = "image/jpeg"): Promise<OcrSpaceResult> {
   const configuredKey = process.env.OCR_SPACE_API_KEY;
   const isProd = process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 
@@ -64,7 +64,8 @@ export async function runOcrSpace(imageBuffer: Buffer): Promise<OcrSpaceResult> 
 
   const formData = new FormData();
   const base64 = imageBuffer.toString("base64");
-  formData.append("base64Image", `data:image/jpeg;base64,${base64}`);
+  formData.append("base64Image", `data:${mime};base64,${base64}`);
+  if (mime === "application/pdf") formData.append("filetype", "PDF");
   formData.append("language", "jpn");
   formData.append("isOverlayRequired", "true");   // 座標情報を取得
   formData.append("detectOrientation", "true");

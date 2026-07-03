@@ -7,6 +7,12 @@ import { storageProvider } from "@/lib/storage";
 import { parsePdfBuffer } from "@/lib/import/pdf/pdf-parser";
 import { autoRescueRows } from "@/lib/import/auto-rescue";
 import { saveImportBatch, saveDriverScan, calcBatchStats } from "@/lib/import/pipeline";
+import { runOcrSpace } from "@/lib/ocr/ocrspace";
+import { applyL1MProfile } from "@/lib/import/profiles/l1m-cargo-list-profile";
+import { isL1MLayout } from "@/lib/import/profiles/l1m-layout-detector";
+import { checkDailyLimit, logOcrUsage } from "@/lib/ocr/usage";
+import { computeImageHash } from "@/lib/ocr/hash";
+import type { NormalizedDispatchRow } from "@/types/import";
 
 export const maxDuration = 60;
 
@@ -31,8 +37,33 @@ export async function POST(req: NextRequest) {
   const filename = `import/pdf/${Date.now()}_${file.name}`;
   const { url } = await storageProvider.save(buffer, filename);
 
-  const { rows, source } = await parsePdfBuffer(buffer, waveNo);
-  const rescued = await autoRescueRows(rows);
+  const parsed = await parsePdfBuffer(buffer, waveNo);
+  let rescued: NormalizedDispatchRow[];
+  let source: "pdf_text" | "pdf_ocr" = parsed.source;
+
+  if (parsed.rows.length > 0) {
+    // テキストレイヤーあり
+    rescued = await autoRescueRows(parsed.rows);
+  } else {
+    // スキャンPDF（CamScanner等・テキストなし）→ OCR.space に通す
+    const limit = await checkDailyLimit();
+    if (!limit.ok) return NextResponse.json({ error: `OCR.space 日次上限（${limit.limit}回）到達` }, { status: 429 });
+    const ocr = await runOcrSpace(buffer, "application/pdf");
+    await logOcrUsage({ imageHash: computeImageHash(buffer), status: "success", itemCount: 0 });
+    if (!isL1MLayout(ocr.parsedText, ocr.words)) {
+      return NextResponse.json({ error: "配送表（L1M）を検出できませんでした。1ページ・正面・鮮明なPDFをお試しください。" }, { status: 422 });
+    }
+    const batch = await applyL1MProfile({
+      parsedText: ocr.parsedText, words: ocr.words,
+      imageWidth: ocr.imageWidth, imageHeight: ocr.imageHeight, source: "image_ocr",
+    });
+    if (!batch) {
+      return NextResponse.json({ error: "配送表を解析できませんでした。1ページ・正面・鮮明なPDFをお試しください。" }, { status: 422 });
+    }
+    rescued = batch.rows;
+    source = "pdf_ocr";
+  }
+
   const stats = calcBatchStats(rescued);
   const result = { batchId: "", source, ...stats, rows: rescued, originalFileUrl: url, waveNo: waveNo ?? undefined };
 
