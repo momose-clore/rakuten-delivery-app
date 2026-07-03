@@ -67,7 +67,7 @@
 ### 取込の重複防止・カメラ本番バグ修正・テストデータ管理（2026-07-03）
 | 項目 | 内容 | 検証 |
 |---|---|---|
-| 重複取込dedup | `saveDriverScan` が同一ドライバー・同日で既存の 伝票No/(W番号+配車No) と重複する行をスキップ（同一PDF/画像2回でも二重登録しない）。`skippedCount` 返却＋UIトースト表示 | 本番で再取込→`itemCount:0/skippedCount:3` 確認 |
+| 撮り直しで更新(upsert) | `saveDriverScan` が同一ドライバー・同日の 伝票No/(W番号+配車No) で既存突合し、**あれば新OCR結果で更新・無ければ新規**（二重登録しない）。完了ステータス・誤配なし・承認/手動修正済み座標＆住所は保護。`createdCount`/`updatedCount` 返却＋UIトースト | 本番で再取込→`updatedCount:3`＋住所が正規順に更新を確認 |
 | **カメラ取込 本番500 修正** | `/camera/upload` が `TypeError: SharedArrayBuffer is not allowed` で500（sharpの`.toBuffer()`をVercel Blob put()のfetchが拒否）。`Buffer.from` で通常ArrayBuffer裏付けにコピー。**実機カメラ取込の本番バグ** | upload/process 200・カメラで3件反映確認 |
 | テストデータ消し込み | `GET /api/admin/setup/test-driver?action=cleanup&token=...` で TEST-001 の配送データのみ削除（実データ非対象） | 9件削除→0件確認 |
 
@@ -1991,3 +1991,12 @@ npm run db:seed:prod
 ### 競合ルール
 - α区画（`admin-preview/` `admin/live-map/` `components/map/` `components/driver/DriverLocationTracker` `api/driver/location` `api/admin/driver-locations` `public/vendor/leaflet/`）はβ非編集。
 - `prisma/schema.prisma` は末尾追記のみ（既存モデル非編集）。DriverLocationはDriverへrelation張らず＝競合回避。
+
+### ③-確定8 増便機能の拡充（一覧フィルタ＋CSV出力）＋γ合流
+- γのschema変更(driver_locations)と合流: Prisma再生成・migration適用済・データ無事・typecheck/lint通過
+- 一覧API `GET /api/extra-vehicle-requests` に **status/depot/from/to 絞り込み**追加（共通 `buildRequestFilter`）。ADMIN=全件/DRIVER=自分
+- **CSV出力** `GET /api/admin/extra-vehicle-requests/export`（ADMIN・同フィルタ対応・BOM付きUTF-8・PII非ログ）
+- 管理画面: 対象日(開始/終了)・デポの絞り込みUI＋「CSV出力」「条件クリア」ボタン追加（ExtraVehicleAdminClient）
+- ガード確認: export=403 / list=401（未ログイン）・アプリはURLSearchParamsで日本語自動エンコード
+- 協力方針: クルーページ非変更・レイアウト担当の「殻」は触らずAPI/ロジック/自己完結コンポーネント中心
+- `npm run typecheck` ✅ / `npm run lint` ✅
