@@ -15,6 +15,7 @@ const STATUS_LABEL: Record<string, { label: string; className: string }> = {
 export function ShiftImportClient() {
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
+  const [endDate, setEndDate] = useState(""); // 任意：期間取込の終了日
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ShiftImportResult | null>(null);
   const [drivers, setDrivers] = useState<DriverWithShift[]>([]);
@@ -27,6 +28,9 @@ export function ShiftImportClient() {
   const REALTIME_INTERVAL_MS = 30_000;
   const [realtime, setRealtime] = useState(false);
   const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [syncSummary, setSyncSummary] = useState<{ driverCreated: number; driverUpdated: number; shiftUpserted: number; usedMock: boolean } | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [failCount, setFailCount] = useState(0);
   const inFlight = useRef(false);
 
   /** リアルタイム取得（CARIO最新→DB同期→一覧反映）。ポーリングと手動更新で共用。 */
@@ -44,9 +48,13 @@ export function ShiftImportClient() {
       setDrivers(body.drivers ?? []);
       setConnection(body.connection ?? null);
       setSyncedAt(body.syncedAt ?? null);
-      setError(body.syncError ?? "");
+      setSyncSummary(body.syncSummary ?? null);
+      setSyncError(body.syncError ?? null);
+      // 連続失敗カウント（成功でリセット）
+      setFailCount((c) => (body.syncError ? c + 1 : 0));
     } catch {
-      setError("リアルタイム取得に失敗しました");
+      setSyncError("リアルタイム取得に失敗しました");
+      setFailCount((c) => c + 1);
     } finally {
       inFlight.current = false;
     }
@@ -71,7 +79,7 @@ export function ShiftImportClient() {
     const res = await fetch("/api/shifts/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date }),
+      body: JSON.stringify(endDate && endDate >= date ? { date, to: endDate } : { date }),
     });
 
     setImporting(false);
@@ -153,6 +161,10 @@ export function ShiftImportClient() {
     setDrivers([]);
     setConnection(null);
     setError("");
+    setSyncSummary(null);
+    setSyncError(null);
+    setSyncedAt(null);
+    setFailCount(0);
   }
 
   return (
@@ -170,8 +182,22 @@ export function ShiftImportClient() {
               className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">終了日（任意・期間取込）</label>
+            <input
+              type="date"
+              value={endDate}
+              min={date}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
           <Button onClick={handleImport} disabled={importing || !date}>
-            {importing ? "取込中..." : "CARIOシフト取込"}
+            {importing
+              ? "取込中..."
+              : endDate && endDate >= date
+                ? "期間まとめて取込"
+                : "CARIOシフト取込"}
           </Button>
           <Button
             onClick={() => fetchShifts(date)}
@@ -209,6 +235,29 @@ export function ShiftImportClient() {
           )}
         </div>
 
+        {/* 同期ステータス（リアルタイム時） */}
+        {realtime && (syncSummary || syncError) && (
+          <div className="mt-3">
+            {failCount >= 2 ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                ⚠ CARIO同期が {failCount} 回連続で失敗しています。前回取込データを表示中です。
+                ネットワークまたはCARIO側の状態を確認してください。
+                {syncError && <span className="block text-xs text-red-500 mt-1">{syncError}</span>}
+              </div>
+            ) : syncError ? (
+              <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+                最新データの取得に一時的に失敗しました（自動で再試行します）。
+                <span className="block text-xs text-orange-500 mt-1">{syncError}</span>
+              </div>
+            ) : syncSummary ? (
+              <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                同期OK：ドライバー 新規{syncSummary.driverCreated}／更新{syncSummary.driverUpdated}・シフト {syncSummary.shiftUpserted} 件
+                {syncSummary.usedMock && <span className="ml-2 text-amber-600 font-medium">※モックデータ</span>}
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {error && (
           <p className="mt-3 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>
         )}
@@ -242,9 +291,14 @@ export function ShiftImportClient() {
       {/* ドライバー一覧 */}
       {drivers.length > 0 && (
         <div>
-          <h2 className="text-base font-semibold text-gray-900 mb-3">
-            稼働予定ドライバー一覧（{drivers.length} 人）
-          </h2>
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-gray-900">
+              稼働予定ドライバー一覧（{drivers.length} 人）
+            </h2>
+            <p className="mt-1 text-xs text-gray-400">
+              ※ CARIOは勤務時間を提供しないため「開始／終了」は空欄です。割当（号車・現場）から稼働確定として取り込んでいます。
+            </p>
+          </div>
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">

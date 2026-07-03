@@ -40,11 +40,12 @@ export function jstDateStr(offsetDays = 0): string {
  */
 export async function syncCarioAssignments(
   from: string,
-  to?: string
+  to?: string,
+  siteId?: string
 ): Promise<CarioSyncResult> {
   const toDate = to ?? from;
   const { drivers, shifts, warnings, usedMock } =
-    await fetchAssignmentsForRange(from, toDate);
+    await fetchAssignmentsForRange(from, toDate, siteId);
 
   // 既存ドライバーを取得（phone/companyName の null 上書き防止のため）
   const carioIds = drivers.map((d) => d.carioDriverId);
@@ -154,5 +155,29 @@ export async function markRangeStale(from: string, to?: string): Promise<void> {
   await prisma.shift.updateMany({
     where: { workDate: { gte: new Date(from), lte: new Date(toDate) } },
     data: { isStale: true, sourceStatus: "API_FAILURE" },
+  });
+}
+
+/**
+ * stale（前回取込）シフトの継続使用を管理者が承認する。
+ * CARIO API 失敗時に古いデータで運用を続ける判断を記録する。
+ */
+export async function approveStaleShifts(
+  workDate: Date,
+  adminUserId: string
+): Promise<void> {
+  await prisma.shift.updateMany({
+    where: { workDate, isStale: true },
+    data: { sourceStatus: "USER_APPROVED" },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId: adminUserId,
+      action: "CARIO_STALE_APPROVED",
+      targetType: "shifts",
+      targetId: workDate.toISOString().split("T")[0]!,
+      afterData: { sourceStatus: "USER_APPROVED" },
+    },
   });
 }

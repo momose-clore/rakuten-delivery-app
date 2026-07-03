@@ -14,9 +14,15 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
   if (session.user.role !== "ADMIN") return NextResponse.json({ error: "権限がありません" }, { status: 403 });
 
-  const { date } = (await req.json()) as { date?: string };
+  const { date, to, siteId } = (await req.json()) as { date?: string; to?: string; siteId?: string };
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: "日付形式が不正です（YYYY-MM-DD）" }, { status: 400 });
+  }
+  if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return NextResponse.json({ error: "終了日の形式が不正です（YYYY-MM-DD）" }, { status: 400 });
+  }
+  if (to && to < date) {
+    return NextResponse.json({ error: "終了日は開始日以降にしてください" }, { status: 400 });
   }
 
   const connectionMode = getCarioConnectionMode();
@@ -24,10 +30,10 @@ export async function POST(req: NextRequest) {
 
   let result;
   try {
-    result = await syncCarioAssignments(date);
+    result = await syncCarioAssignments(date, to, siteId);
   } catch (err) {
     if (err instanceof CarioApiError) {
-      await markRangeStale(date);
+      await markRangeStale(date, to);
       const httpStatus = err.type === "TIMEOUT" ? 504 : 502;
       return NextResponse.json(
         { error: err.message, isStale: true, connectionMode },

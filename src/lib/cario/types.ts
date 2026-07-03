@@ -37,6 +37,23 @@ export interface CarioAssignment {
   assignmentStatus: "ASSIGNED" | "COMPLETED" | "UNKNOWN";
 }
 
+// CARIO 現場（/sites）
+export interface CarioSite {
+  id: string;
+  name: string;
+  flowType: string | null;   // 例: "wave_count"
+  waveCount: number | null;  // Wave 数
+  client: string | null;     // 元請
+}
+
+// CARIO シフト希望（/shift-requests）※現状レスポンスは空。将来対応の先回り型
+export interface CarioShiftRequest {
+  driverId: string;
+  driverName: string | null;
+  workDate: string;          // "YYYY-MM-DD"
+  raw: Record<string, unknown>; // 実フィールド確定まで生データを保持
+}
+
 // 取込結果サマリー
 export interface ImportSummary {
   date: string;

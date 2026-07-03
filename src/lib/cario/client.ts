@@ -118,6 +118,7 @@ export async function carioGet<T>(path: string): Promise<T> {
 export async function fetchRakutenAssignments(params: {
   from: string;
   to: string;
+  siteId?: string;
 }): Promise<unknown> {
   const baseUrl = getBaseUrl();
   const path =
@@ -131,6 +132,7 @@ export async function fetchRakutenAssignments(params: {
   const url = new URL(path, baseUrl);
   url.searchParams.set("from", params.from);
   url.searchParams.set("to", params.to);
+  if (params.siteId) url.searchParams.set("site_id", params.siteId);
 
   // ❌ ログ出力しない（URLにクエリパラメータ、APIキーが含まれる可能性）
   // console.log("Fetching CARIO:", url.toString());

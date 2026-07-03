@@ -25,7 +25,8 @@ export interface RakutenAssignmentsResult {
  */
 export async function fetchAssignmentsForRange(
   from: string,
-  to?: string
+  to?: string,
+  siteId?: string
 ): Promise<RakutenAssignmentsResult> {
   const toDate = to ?? from;
 
@@ -37,7 +38,7 @@ export async function fetchAssignmentsForRange(
     };
   }
 
-  const raw = await fetchRakutenAssignments({ from, to: toDate });
+  const raw = await fetchRakutenAssignments({ from, to: toDate, siteId });
   const mapped = mapRakutenAssignmentsResponse(raw);
 
   return { ...mapped, usedMock: false };

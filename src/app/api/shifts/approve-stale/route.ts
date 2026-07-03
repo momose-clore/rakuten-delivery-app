@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
-import { approveStaleShifts } from "@/lib/cario/shift-importer";
+import { approveStaleShifts } from "@/lib/cario/sync";
 
 /**
  * stale（前回取込）シフトの継続使用を管理者が承認する。

@@ -24,8 +24,20 @@ export async function GET(req: NextRequest) {
   }
 
   let syncError: string | null = null;
+  let syncSummary: {
+    driverCreated: number;
+    driverUpdated: number;
+    shiftUpserted: number;
+    usedMock: boolean;
+  } | null = null;
   try {
-    await syncCarioAssignments(date);
+    const r = await syncCarioAssignments(date);
+    syncSummary = {
+      driverCreated: r.driverCreated,
+      driverUpdated: r.driverUpdated,
+      shiftUpserted: r.shiftUpserted,
+      usedMock: r.usedMock,
+    };
   } catch (err) {
     if (err instanceof CarioApiError) {
       await markRangeStale(date);
@@ -42,5 +54,6 @@ export async function GET(req: NextRequest) {
     ...payload,
     syncedAt: new Date().toISOString(),
     syncError,
+    syncSummary,
   });
 }
