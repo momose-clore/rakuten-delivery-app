@@ -54,6 +54,24 @@ function reconstructDispatchKey(rowWords: OcrWord[]): string | null {
   return null;
 }
 
+/**
+ * 住所を正規順（都道府県→市区町村→町丁目→番地→建物）に組み直す。
+ * OCRの語順で郵便番号・番地が先頭に来るなど並びが乱れるため、都道府県を起点に回転し、
+ * 都道府県より前にあった非郵便番号部分（番地等）を末尾へ回す。郵便番号は本体から除去。
+ */
+function canonicalizeL1MAddress(raw: string): string {
+  const s = (raw ?? "").replace(/[\s　]/g, "").replace(/〒/g, "");
+  if (!s) return "";
+  const zip = (s.match(/\d{3}-?\d{4}/) ?? [""])[0];
+  const prefM = s.match(/(東京都|北海道|京都府|大阪府|[^\d\s]{2,3}県)/);
+  if (!prefM) return zip ? s.replace(zip, "") : s;
+  const pref = prefM[0];
+  const idx = s.indexOf(pref);
+  const afterPref = s.slice(idx);
+  const before = s.slice(0, idx).replace(zip, "");
+  return (afterPref + before).replace(zip, "");
+}
+
 /** OCR単語から L1M 明細ブロックを抽出 */
 export function parseL1MRowBlocks(
   words: OcrWord[],
@@ -197,7 +215,7 @@ export function parseL1MRowBlocks(
     } else {
       rawAddress = centerText;
     }
-    let { value: address, suspect: addressSuspect } = extractAddress(rawAddress);
+    let { value: address, suspect: addressSuspect } = extractAddress(canonicalizeL1MAddress(rawAddress));
     // フォールバック：住所が空/地名なしなら、ブロック中央語から郵便番号or都道府県以降を住所として拾う
     // （連絡先・住所ラベルが両方読めない行の救済。元データに住所が無ければ空のまま＝要確認で正しく残る）。
     if (!address || !/[都道府県区市町村]/.test(address)) {
@@ -208,7 +226,7 @@ export function parseL1MRowBlocks(
         .join("");
       const m = joined.match(/(〒?\s*\d{3}-?\d{4}[\s\S]*|[都道府県][\s\S]*)$/);
       if (m) {
-        const r = extractAddress(m[1]);
+        const r = extractAddress(canonicalizeL1MAddress(m[1]));
         if (r.value && r.value.length > (address?.length ?? 0)) {
           address = r.value;
           addressSuspect = r.suspect;
