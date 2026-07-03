@@ -1,17 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
 
+// セットアップ用トークン（管理者ログイン無しでも ?token= で実行可能にする一時手段）
+const SETUP_TOKEN = "clore-setup-2026";
+
 /**
- * テスト用ドライバーアカウント＋本日のサンプル配送を作成する（管理者専用・冪等）。
+ * テスト用ドライバーアカウント＋本日のサンプル配送を作成する（冪等）。
+ * 実行方法（いずれか）:
+ *   - 管理者でログイン状態でこのURLを開く
+ *   - ?token=<SETUP_TOKEN> を付けて開く（ログイン不要）
  * 本番でクルー画面を試すための一時セットアップ。用済み後は削除してよい。
- * 管理者ログイン状態でこのURLを開くと実行される。
  */
-export async function GET() {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: "認証が必要です（管理者でログインしてください）" }, { status: 401 });
-  if (session.user.role !== "ADMIN") return NextResponse.json({ error: "管理者のみ実行できます" }, { status: 403 });
+export async function GET(req: NextRequest) {
+  const token = req.nextUrl.searchParams.get("token");
+  if (token !== SETUP_TOKEN) {
+    const session = await auth();
+    if (!session) return NextResponse.json({ error: "認証が必要です（管理者ログイン、または ?token= を付けてください）" }, { status: 401 });
+    if (session.user.role !== "ADMIN") return NextResponse.json({ error: "管理者のみ実行できます" }, { status: 403 });
+  }
 
   const email = "test-driver@delivery-app.local";
   const password = "driver1234";
