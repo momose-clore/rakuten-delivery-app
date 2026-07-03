@@ -40,7 +40,7 @@ export default function PreviewIndex() {
                   {l.tag && <span className="text-[10px] font-bold px-2 py-0.5 rounded-md text-white" style={{ background: "#b8923f" }}>{l.tag}</span>}
                 </div>
                 <p className="text-xs text-gray-500 mt-0.5">{l.desc}</p>
-                <p className="text-[11px] text-gray-400 mt-1 font-mono">localhost:3001{l.href}</p>
+                <p className="text-[11px] text-gray-400 mt-1 font-mono">{l.href}</p>
               </div>
               <ChevronRight className="text-gray-300 shrink-0" size={20} />
             </div>
