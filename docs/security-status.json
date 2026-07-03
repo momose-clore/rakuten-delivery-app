@@ -1,0 +1,55 @@
+{
+  "$comment": "セキュリティ監視ステータス（正典）。担当=α（セキュリティ監視）。β はこのデータを読んで /admin/security 閲覧ページを描画する。α が監視のたびに更新する。修復方針: 現在は監視・レポートのみ（対策適用は依頼者判断待ち）。",
+  "schemaVersion": 1,
+  "owner": "alpha",
+  "role": "security-monitoring-report",
+  "lastCheckedAt": "2026-07-03",
+  "policy": {
+    "mode": "monitor-report-only",
+    "note": "監視・レポートのみ。新規の修復（対策）は行わない（依頼者指示）。DB・既存データは変更しない。"
+  },
+  "summary": {
+    "critical": { "open": 0, "fixed": 1 },
+    "high": { "open": 1, "fixed": 4 },
+    "medium": { "open": 4, "fixed": 0 },
+    "low": { "open": 2, "fixed": 1 }
+  },
+  "npmAudit": {
+    "checkedAt": "2026-07-03",
+    "total": 6,
+    "critical": 0,
+    "high": 1,
+    "moderate": 5,
+    "low": 0,
+    "notableHigh": [
+      {
+        "package": "xlsx",
+        "version": "0.18.5",
+        "severity": "high",
+        "advisories": ["Prototype Pollution (CVE-2023-30533)", "ReDoS (CVE-2024-22363)"],
+        "fixAvailableViaNpm": false,
+        "note": "npm には修正版なし。公式CDN版(>=0.20.2)へ差替 or exceljs 移行で解消。ユーザアップロードのExcelが XLSX.read に到達。"
+      }
+    ]
+  },
+  "findings": [
+    { "id": "C1", "severity": "critical", "title": "test-driver API の未認証トークンバイパス", "area": "auth", "status": "fixed", "detail": "?token= 未認証バイパスを撤去しADMIN必須化。" },
+    { "id": "H1", "severity": "high", "title": "LINE Webhook 署名検証 fail-open", "area": "line", "status": "fixed", "detail": "本番でsecret未設定時は拒否(fail-closed)。" },
+    { "id": "H2", "severity": "high", "title": "カメラOCR process の SSRF", "area": "ocr", "status": "fixed", "detail": "imageUrl を自ストレージ(Vercel Blob)のみ許可。" },
+    { "id": "H3", "severity": "high", "title": "セキュリティヘッダー欠如", "area": "config", "status": "fixed", "detail": "CSP/HSTS/X-Frame-Options/nosniff/Referrer/Permissions を付与。" },
+    { "id": "H4", "severity": "high", "title": "レート制限なし（ログイン/OCR/upload/geocode/external）", "area": "config", "status": "open", "detail": "総当り・コスト濫用に無防備。WAF or @upstash/ratelimit を推奨。" },
+    { "id": "H5", "severity": "high", "title": "xlsx@0.18.5 の既知CVE", "area": "deps", "status": "open", "detail": "npm修正なし。CDN版差替 or exceljs 移行が必要。" },
+    { "id": "M1", "severity": "medium", "title": "err.message をクライアントに返却", "area": "config", "status": "open", "detail": "cario/sites, shifts/import, cron/cario-sync, shifts/realtime。汎用メッセージ化を推奨。" },
+    { "id": "M2", "severity": "medium", "title": "Postgres SSL 未強制", "area": "db", "status": "open", "detail": "DATABASE_URL に sslmode=require を必須化・文書化。" },
+    { "id": "M3", "severity": "medium", "title": "next-auth を beta 固定で本番運用", "area": "deps", "status": "open", "detail": "exact固定＋v5安定版の追跡。" },
+    { "id": "M4", "severity": "medium", "title": "next 経由 postcss の XSS系 transitive", "area": "deps", "status": "open", "detail": "ビルドツール。Next 16.x パッチ版で追随。" },
+    { "id": "L1", "severity": "low", "title": "cron CRON_SECRET 比較が非タイミングセーフ", "area": "cron", "status": "fixed", "detail": "timingSafeEqual に統一。" },
+    { "id": "L2", "severity": "low", "title": "画像配信 Content-Disposition 未設定", "area": "config", "status": "open", "detail": "多層防御。nosniffは全体ヘッダで付与済。" },
+    { "id": "L3", "severity": "low", "title": "Prisma dev-only @hono/node-server パストラバーサル", "area": "deps", "status": "open", "detail": "本番非同梱・実害低。監視のみ。" }
+  ],
+  "docs": {
+    "auditReport": "docs/SECURITY_AUDIT.md",
+    "privacyPolicy": "docs/PRIVACY_POLICY.md",
+    "privacyLegalReview": "docs/PRIVACY_POLICY_LEGAL_REVIEW.md"
+  }
+}
