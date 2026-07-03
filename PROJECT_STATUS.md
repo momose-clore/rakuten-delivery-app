@@ -5,6 +5,22 @@
 
 ---
 
+## 📣 全ターミナル共有（α/β/γ）2026-07-03
+
+### 方針（ユーザー指示）: プライバシーポリシー記載内容は気にしなくてよい
+- **撮影画像（配送表）の Vercel Blob `access:"public"` 保存**、および **OCR取込後の画像（PII）削除未実装**は、**当面「対応不要・ブロッカー扱いしない」**（ユーザー明示・2026-07-03）。
+- セキュリティ監査(β)でも、この「画像のpublic保存／PII画像の残存」項目は**修復必須として扱わない**でOK。
+- ※コーディング衛生上のルール（氏名/電話/住所/伝票No を **console.log しない**・raw OCR JSON を公開保存しない）は従来どおり継続。
+
+### カメラ/PDF 取込の「画像クリーンアップ」現状（α調査）
+- **OCR前補正**: 実施済み（EXIF回転→リサイズ→grayscale→normalize/CLAHE→sharpen）。**未実装**: 傾き角補正・書類の縁検出/自動クロップ・影除去・二値化。
+- **保存後の画像削除**: 未実施（`storageProvider.delete()` は存在するが取込フローで未呼出）。上記方針により当面そのまま。
+
+### αの直近成果（本番反映済み）
+- 本番OCRキー登録・実PDF反映検証／スキャンPDF強化／dedup／カメラupload 500修正／**OCR読取精度 旧0/3→新3/3（配車No・伝票No・電話・数量・住所）**。詳細は下記各セクション。
+
+---
+
 ## 🔒 セキュリティ監査＆修復（2026-07-03 開始・以降 日次監視）
 
 全体監査を実施（詳細: `docs/SECURITY_AUDIT.md`）。Critical 1・High 5・Medium 4・Low 3 を検出。
@@ -1932,3 +1948,11 @@ npm run db:seed:prod
 - 動作確認: 外部pull API `GET /api/external/extra-vehicle-requests`（Bearer）が増便1件を返却・`reportText="石毛 6W 増便申請が届きました"`・HTTP200＝**アプリ→DB接続OK**
 - dev seedログイン: admin@delivery-app.local / admin1234（詳細は memory: project_local_dev_db）
 - EXTRA_VEHICLE_PULL_TOKEN をローカル検証用に発行・.env.local設定済
+
+### ③-確定7 送信文面=詳細フォーマット＋増便フォーム改良
+- LINE送信文面を短通知→**詳細フォーマット**(`formatExtraVehicleReport`)に戻す（送信ルート/pull API/管理画面プレビュー）
+- 増便フォーム(ExtraVehicleRequestForm・管理者/ドライバー共通)を使いやすく:
+  - 対象デポ・該当便(1W〜8W)・ドライバー名を `datalist` 化（入力 or 候補選択）
+  - ドライバー候補: `GET /api/drivers`（認証要・氏名/会社/エリアのみ・電話等は返さない）新設
+  - 申請理由は自由入力（例文プレースホルダ）
+- `npm run typecheck` ✅ / `npm run lint` ✅
