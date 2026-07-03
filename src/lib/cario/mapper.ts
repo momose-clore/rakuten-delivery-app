@@ -11,7 +11,8 @@ type ApiRecord = Record<string, unknown>;
 
 /**
  * CARIO API のドライバーレコードを CarioDriver に変換する。
- * TODO: CARIO実API仕様確定後にフィールドマッピングを調整
+ * ※ 実API(v1.0)確定済み。主力の assignments 経路では未使用で、
+ *   レスポンスに drivers 配列が同梱された場合のフォールバック用。
  */
 export function mapApiDriver(record: ApiRecord): CarioDriver {
   return {
@@ -30,7 +31,8 @@ export function mapApiDriver(record: ApiRecord): CarioDriver {
 
 /**
  * CARIO API のシフトレコードを CarioShift に変換する。
- * TODO: CARIO実API仕様確定後にフィールドマッピングを調整
+ * ※ 実API(v1.0)確定済み。assignments から shifts を導出する運用のため通常未使用。
+ *   レスポンスに shifts 配列が同梱された場合のフォールバック用。
  */
 export function mapApiShift(record: ApiRecord): CarioShift {
   const statusRaw = String(record.status ?? record.shift_status ?? "CONFIRMED").toUpperCase();
