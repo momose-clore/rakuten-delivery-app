@@ -35,6 +35,12 @@
 
 **要判断/未対応（優先度順）**: H4 レート制限なし / H5 `xlsx@0.18.5` 脆弱版差替 / M1 err.message漏れ / M2 Postgres SSL強制 / M3 next-auth beta固定 / L2 画像 Content-Disposition。
 
+### プライバシーポリシー整備（2026-07-03）
+- 日本語版 `docs/PRIVACY_POLICY.md`／英語版 `docs/PRIVACY_POLICY.en.md`（日本語優先条項付き）を作成。
+- リーガルチェック `docs/PRIVACY_POLICY_LEGAL_REVIEW.md`（APPI 2022改正準拠・弁護士最終確認推奨）。指摘のうち 外国third者提供(法28条)・手数料・苦情申出先・外的環境の把握 をポリシー本文へ反映済。
+- 閲覧用公開ページ `src/app/privacy/page.tsx`（`/privacy`・ログイン不要）を追加し、**クルー画面（driver layout）最下部に控えめなリンク**を設置。
+- 事業者名・所在地・保管国・保存期間・手数料は【要設定】プレースホルダ（確定後に置換）。DB・既存データは不変更。
+
 ---
 
 ## ✅ 本番OCR稼働（2026-07-03 解消・検証済）
@@ -85,8 +91,14 @@
 - 伝票No＝中央語数字連結から `20XX+13桁` を直接抽出／電話＝連絡先行のy帯で語結合（`090-1552-3598`の語分割対応）／住所＝連絡先行の直下をy座標結合
 - 数量＝実測列中心[常温67/クーラー78/ケース88/箱計97%]の最寄り割当（空セルのズレ解消）、境界0.76→0.63
 - 前処理解像度 TARGET3600→4000・MAX4200→6000、ペイロード保護を「解像度優先」に（潰れた小文字対策・grayscaleなら6000px級でも1MB以下を実測）
+- **2枚目実データ(W2/号車10・5配送)で追加修正**:
+  - 日付(06-21)を配車Noと誤検出→**配車No第1部=号車(vehicleNo)一致**で絞り込み、偽ブロックを排除
+  - 連絡先ラベル未OCR行の電話を**ハイフン付き電話書式フォールバック**で復元（15桁伝票と誤マッチしない）
+  - ラベル両方欠落行の住所を**郵便番号/都道府県アンカーのフォールバック**で復元
 
-**残課題（軽微）**: 住所は稀に地名漢字のOCR誤読あり（GODOOR不使用のため Google Geocoding＋overrideで補正する方針）。実運用データが増えたら誤読辞書・列中心を追調整。
+**検証(2枚)**: 16.53(4配送) 配車No/伝票/電話/住所 4/4 ／ 17.23(3配送) 配車No/伝票/電話/数量 3/3（住所は1件だけ地名漢字OCR誤読で2/3）。
+
+**残課題（軽微）**: 住所は稀に地名漢字のOCR誤読あり（GODOOR不使用のため Google Geocoding＋overrideで補正する方針）。数量の個別列は空セル多発時にズレる場合あり（サマリー総数クロスチェックで要確認フラグ）。実運用データが増えたら誤読辞書・列中心を追調整。
 
 ---
 
@@ -1956,3 +1968,26 @@ npm run db:seed:prod
   - ドライバー候補: `GET /api/drivers`（認証要・氏名/会社/エリアのみ・電話等は返さない）新設
   - 申請理由は自由入力（例文プレースホルダ）
 - `npm run typecheck` ✅ / `npm run lint` ✅
+
+---
+
+## 【α→β 正式引き継ぎ】管理者レイアウト刷新 ＋ 号車GPSリアルタイム地図（2026-07-03）
+
+> **β（管理画面担当）へ：反映作業の開始をお願いします。** 詳細仕様・API契約・チェックリストは
+> **`docs/HANDOFF_admin_layout_gps.md`** に集約（本節はサマリ）。
+
+### 完成・検証済み（α実装・課金ゼロ厳守）
+- レイアウト正式サンプル: `/admin-preview`（認証不要・Amazon Logistics風・美女木デポ仕様）
+- 本番ライブ地図: `/admin/live-map`（管理者認証・30秒ポーリング・OSM+Leaflet=完全無料）
+- GPS取得: ドライバー端末 `watchPosition` → `POST /api/driver/location` → `DriverLocation`(upsert) → `GET /api/admin/driver-locations`
+- 地図はGoogle Maps有料API不使用（Leaflet自己ホスト＝CSP `script-src 'self'`対応・タイルはOSM/Esri無料）
+- 品質: `typecheck`/`lint`/`build` ✅、ローカルmigration適用済、認証ガード疎通済（401/307）
+
+### β にお願いする反映作業（詳細は HANDOFF 文書）
+1. **Sidebar に `/admin/live-map` 導線追加**（Sidebar.tsx はβ区画のためα未編集）
+2. **レイアウト本採用の可否判断＋メトリクス実データ接続**（集計元マッピングは HANDOFF §4-B）
+3. **本番DB migration `20260703170000_add_driver_locations` の適用＋デプロイ**（★γと要調整・共有DBのためα単独では未適用）
+
+### 競合ルール
+- α区画（`admin-preview/` `admin/live-map/` `components/map/` `components/driver/DriverLocationTracker` `api/driver/location` `api/admin/driver-locations` `public/vendor/leaflet/`）はβ非編集。
+- `prisma/schema.prisma` は末尾追記のみ（既存モデル非編集）。DriverLocationはDriverへrelation張らず＝競合回避。
