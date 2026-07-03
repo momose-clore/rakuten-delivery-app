@@ -97,8 +97,8 @@ export async function POST(req: NextRequest) {
     const driverId = session.user.driverId;
     if (!driverId) return NextResponse.json({ error: "ドライバー情報が見つかりません" }, { status: 403 });
     if (rescued.length === 0) return NextResponse.json({ error: "配送データを読み取れませんでした。別のPDFをお試しください。" }, { status: 422 });
-    const { itemCount, skippedCount } = await saveDriverScan(result, driverId, session.user.id, url);
-    return NextResponse.json({ reflected: true, itemCount, skippedCount, source, ...stats });
+    const { itemCount, createdCount, updatedCount } = await saveDriverScan(result, driverId, session.user.id, url);
+    return NextResponse.json({ reflected: true, itemCount, createdCount, updatedCount, source, ...stats });
   }
 
   // 管理者：従来どおり取込バッチ→確認フロー

@@ -12,12 +12,35 @@ import { isL1MLayout } from "@/lib/import/profiles/l1m-layout-detector";
 
 export const maxDuration = 60;
 
+/**
+ * imageUrl が自前ストレージ（Vercel Blob）由来かを検証する SSRF ガード。
+ * https かつ Vercel Blob のホスト（*.blob.vercel-storage.com）のみ許可。
+ * ローカル開発の public/uploads 相対パス（/uploads/...）も許可する。
+ */
+function isAllowedStorageUrl(raw: string): boolean {
+  // 開発用のローカル相対パス
+  if (raw.startsWith("/uploads/")) return true;
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "https:") return false;
+  return u.hostname === "blob.vercel-storage.com" || u.hostname.endsWith(".blob.vercel-storage.com");
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session || (session.user.role !== "ADMIN" && session.user.role !== "DRIVER")) return NextResponse.json({ error: "権限がありません" }, { status: 403 });
 
   const { imageUrl, captureMode = "paper" } = await req.json() as { imageUrl: string; captureMode?: CaptureMode };
   if (!imageUrl) return NextResponse.json({ error: "imageUrl が必要です" }, { status: 400 });
+  // SSRF対策: 自ストレージ（Vercel Blob）由来のURLのみ許可し、
+  // 任意URL（内部メタデータ等）をサーバに fetch させない。
+  if (!isAllowedStorageUrl(imageUrl)) {
+    return NextResponse.json({ error: "不正な imageUrl です" }, { status: 400 });
+  }
 
   const limitCheck = await checkDailyLimit();
   if (!limitCheck.ok) return NextResponse.json({ error: `OCR.space 日次上限（${limitCheck.limit}回）到達` }, { status: 429 });
@@ -50,13 +73,13 @@ export async function POST(req: NextRequest) {
   if (session.user.role === "DRIVER") {
     const driverId = session.user.driverId;
     if (!driverId) return NextResponse.json({ error: "ドライバー情報が見つかりません" }, { status: 403 });
-    const { itemCount, skippedCount } = await saveDriverScan(
+    const { itemCount, createdCount, updatedCount } = await saveDriverScan(
       { ...batchResult, originalFileUrl: imageUrl },
       driverId,
       session.user.id,
       imageUrl
     );
-    return NextResponse.json({ reflected: true, itemCount, skippedCount, ...calcBatchStats(batchResult.rows), layoutProfile: batchResult.layoutProfile });
+    return NextResponse.json({ reflected: true, itemCount, createdCount, updatedCount, ...calcBatchStats(batchResult.rows), layoutProfile: batchResult.layoutProfile });
   }
 
   // 管理者：従来どおり取込バッチ→確認フロー

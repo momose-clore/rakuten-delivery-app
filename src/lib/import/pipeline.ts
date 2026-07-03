@@ -114,27 +114,31 @@ export async function saveDriverScan(
   driverId: string,
   userId: string,
   imageUrl: string
-): Promise<{ dispatchImageId: string; itemCount: number; skippedCount: number }> {
+): Promise<{ dispatchImageId: string; itemCount: number; createdCount: number; updatedCount: number; skippedCount: number }> {
   const workDate = new Date();
   workDate.setHours(0, 0, 0, 0);
   const nextDate = new Date(workDate);
   nextDate.setDate(nextDate.getDate() + 1);
 
-  // 重複取込防止：同一ドライバー・同日で既に取り込まれた 伝票No / (W番号+配車No) は再作成しない
-  // （同じPDF/画像を2回流しても配送が二重登録されないようにする）
+  // 同一ドライバー・同日の既存配送を取得し、伝票No / (W番号+配車No) で突合する。
+  // 同じ配達予定表を撮り直したら「更新(upsert)」する：新しいOCR結果で内容を上書きしつつ、
+  // 完了ステータス・誤配なしフラグ・承認/手動修正済みの座標＆住所は保護する（二重登録もしない）。
   const existingItems = await prisma.deliveryItem.findMany({
     where: {
       assignments: { some: { driverId } },
       dispatchImage: { deliveryDate: { gte: workDate, lt: nextDate } },
     },
-    select: { dispatchKey: true, waveNo: true, invoiceNo: true },
+    select: { id: true, dispatchKey: true, waveNo: true, invoiceNo: true, coordinateStatus: true },
   });
-  const seenInvoice = new Set<string>();
-  const seenKey = new Set<string>();
+  type ExistingItem = (typeof existingItems)[number];
+  const byInvoice = new Map<string, ExistingItem>();
+  const byKey = new Map<string, ExistingItem>();
   for (const it of existingItems) {
-    if (it.invoiceNo) seenInvoice.add(it.invoiceNo);
-    if (it.dispatchKey) seenKey.add(`${it.waveNo ?? ""}|${it.dispatchKey}`);
+    if (it.invoiceNo) byInvoice.set(it.invoiceNo, it);
+    if (it.dispatchKey) byKey.set(`${it.waveNo ?? ""}|${it.dispatchKey}`, it);
   }
+  const PROTECTED_COORD = new Set(["ADMIN_APPROVED", "MANUAL_FIXED"]);
+  const matchedIds = new Set<string>();
 
   const dispatchImage = await prisma.dispatchImage.create({
     data: {
@@ -149,62 +153,62 @@ export async function saveDriverScan(
 
   let order = 1;
   let createdCount = 0;
-  let skippedCount = 0;
+  let updatedCount = 0;
   for (const row of result.rows) {
-    // 既存 or 同一取込内の重複はスキップ
-    const invoiceKey = row.invoiceNo ?? null;
-    const dispatchKeyStr = row.dispatchKey ? `${row.waveNo ?? ""}|${row.dispatchKey}` : null;
-    const isDup =
-      (invoiceKey !== null && seenInvoice.has(invoiceKey)) ||
-      (dispatchKeyStr !== null && seenKey.has(dispatchKeyStr));
-    if (isDup) {
-      skippedCount++;
-      continue;
-    }
-    if (invoiceKey !== null) seenInvoice.add(invoiceKey);
-    if (dispatchKeyStr !== null) seenKey.add(dispatchKeyStr);
-
     const rescued = row as RescuedRow;
     const vehicleNo = row.dispatchKey?.split("-")[1] ?? null;
     const seq = row.dispatchKey ? parseInt(row.dispatchKey.split("-").pop() ?? "0", 10) : null;
 
-    const item = await prisma.deliveryItem.create({
-      data: {
-        dispatchImageId: dispatchImage.id,
-        dispatchKey: row.dispatchKey,
-        waveNo: row.waveNo ?? null,
-        vehicleNo,
-        deliverySeq: seq,
-        invoiceNo: row.invoiceNo,
-        customerName: row.customerName,
-        customerPhone: row.customerPhone,
-        address: row.address,
-        specialFlag: row.specialFlag ?? null,
-        normalOriconCount: row.normalOriconCount,
-        coolerBoxCount: row.coolerBoxCount,
-        caseCount: row.caseCount,
-        totalCount: row.totalCount,
-        memo: row.memo ?? null,
-        ocrNotes: row.notes.length > 0 ? JSON.stringify(row.notes) : null,
-        ocrStatus: "CONFIRMED",
-        deliveryStatus: "ASSIGNED",
-        fieldSourceJson:        rescued.fieldSourceJson ?? null,
-        fieldStatusJson:        rescued.fieldStatusJson ?? null,
-        predictionWarningsJson: rescued.predictionWarningsJson ?? null,
-      },
-    });
+    // 既存突合（伝票No優先→W番号+配車No）。同一取込内で既に処理した行は再突合しない。
+    const invoiceKey = row.invoiceNo ?? null;
+    const dispatchKeyStr = row.dispatchKey ? `${row.waveNo ?? ""}|${row.dispatchKey}` : null;
+    let existing =
+      (invoiceKey ? byInvoice.get(invoiceKey) : undefined) ??
+      (dispatchKeyStr ? byKey.get(dispatchKeyStr) : undefined) ??
+      null;
+    if (existing && matchedIds.has(existing.id)) existing = null;
 
-    await prisma.assignment.create({
-      data: {
-        deliveryItemId: item.id,
-        driverId,
-        routeOrder: seq ?? order,
-        waveNo: row.waveNo ?? null,
-        status: "ASSIGNED",
-      },
-    });
+    // 承認/手動修正済みの座標を持つ行は、住所を自動上書きしない（座標との整合を守る）
+    const protectedCoord = existing ? PROTECTED_COORD.has(existing.coordinateStatus ?? "") : false;
+
+    const content = {
+      dispatchImageId: dispatchImage.id,
+      dispatchKey: row.dispatchKey,
+      waveNo: row.waveNo ?? null,
+      vehicleNo,
+      deliverySeq: seq,
+      invoiceNo: row.invoiceNo,
+      customerName: row.customerName,
+      customerPhone: row.customerPhone,
+      ...(protectedCoord ? {} : { address: row.address }),
+      specialFlag: row.specialFlag ?? null,
+      normalOriconCount: row.normalOriconCount,
+      coolerBoxCount: row.coolerBoxCount,
+      caseCount: row.caseCount,
+      totalCount: row.totalCount,
+      memo: row.memo ?? null,
+      ocrNotes: row.notes.length > 0 ? JSON.stringify(row.notes) : null,
+      fieldSourceJson:        rescued.fieldSourceJson ?? null,
+      fieldStatusJson:        rescued.fieldStatusJson ?? null,
+      predictionWarningsJson: rescued.predictionWarningsJson ?? null,
+    };
+
+    if (existing) {
+      // 更新：deliveryStatus（完了等）・誤配なし・座標は保持し、内容だけ最新OCRで上書き
+      await prisma.deliveryItem.update({ where: { id: existing.id }, data: content });
+      matchedIds.add(existing.id);
+      updatedCount++;
+    } else {
+      const item = await prisma.deliveryItem.create({
+        data: { ...content, address: row.address, ocrStatus: "CONFIRMED", deliveryStatus: "ASSIGNED" },
+      });
+      await prisma.assignment.create({
+        data: { deliveryItemId: item.id, driverId, routeOrder: seq ?? order, waveNo: row.waveNo ?? null, status: "ASSIGNED" },
+      });
+      matchedIds.add(item.id);
+      createdCount++;
+    }
     order++;
-    createdCount++;
   }
 
   await prisma.auditLog.create({
@@ -213,11 +217,11 @@ export async function saveDriverScan(
       action: "DRIVER_SCAN_IMPORT",
       targetType: "dispatch_images",
       targetId: dispatchImage.id,
-      afterData: { itemCount: createdCount, skippedCount, source: result.source },
+      afterData: { createdCount, updatedCount, source: result.source },
     },
   });
 
-  return { dispatchImageId: dispatchImage.id, itemCount: createdCount, skippedCount };
+  return { dispatchImageId: dispatchImage.id, itemCount: createdCount + updatedCount, createdCount, updatedCount, skippedCount: 0 };
 }
 
 /** 統計を計算 */
