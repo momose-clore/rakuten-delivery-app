@@ -82,10 +82,22 @@ export async function preprocessImageForOcrDetailed(buffer: Buffer): Promise<{ b
   // 高解像度化でペイロードが膨らむため品質は88（罫線と文字が潰れない範囲）
   let out = await pipeline.jpeg({ quality: 88 }).toBuffer();
 
-  // OCR.space送信ペイロード保護：大きすぎる場合は再エンコードで縮小（送信は依然1回）
-  if (out.length > 3_500_000) {
-    out = await sharp(out).jpeg({ quality: 75 }).toBuffer();
-    steps.push("recompress(payload-guard)");
+  // OCR.space送信ペイロード保護：上限を超える場合は段階的に品質→解像度を落として収める（送信は依然1回）
+  // 無料枠は1画像1MB制限のため OCR_MAX_PAYLOAD_MB=1 を推奨（既定3.5=PRO想定）。
+  const maxPayload = Math.round(numEnv("OCR_MAX_PAYLOAD_MB", 3.5) * 1_000_000);
+  if (out.length > maxPayload) {
+    // まず品質を段階的に落とす
+    for (const q of [78, 68, 58]) {
+      if (out.length <= maxPayload) break;
+      out = await sharp(out).jpeg({ quality: q }).toBuffer();
+    }
+    // それでも超える場合は長辺を段階縮小（文字が読める下限 1800px まで）
+    let guardWidth = processedWidth;
+    while (out.length > maxPayload && guardWidth > 1800) {
+      guardWidth = Math.round(guardWidth * 0.85);
+      out = await sharp(out).resize({ width: guardWidth }).jpeg({ quality: 68 }).toBuffer();
+    }
+    steps.push(`payload-guard→${(out.length / 1_000_000).toFixed(2)}MB`);
   }
 
   return {
