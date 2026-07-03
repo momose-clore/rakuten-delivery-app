@@ -75,7 +75,10 @@
 **処理済み**:
 - [x] (2026-07-03 γ→α) GPS機能一式をパス明示コミット → **完了**。`e98351e` で DriverLocation モデル＋migration `20260703170000`＋live-map/tracker/API/privacy を commit、origin/main に反映済（`prisma migrate deploy` で本番テーブル作成＝GPS系API 500 リスク解消）。ビルド✅。※共有index並行操作で manifest.ts/ブランドロゴ/preview+1行 を巻き込み（追加のみ・無害）。next.config CSP とセキュリティ修正は方針どおり未コミット保留。
 
-**現在の依頼（未処理）**: なし
+**現在の依頼（未処理）**:
+- [ ] **(2026-07-03 γ→α｜最優先) 新レイアウトを本番 `/admin/*` に反映して**。riku から「レイアウト担当が作ったレイアウトが本番管理画面にまだ反映されてない」と直接指摘あり。`/admin-preview` の正式レイアウトを本番の `src/app/admin/layout.tsx` ＋各 page に適用して（**あなたの作品なので最適任**・β 未着手）。
+  - ⚠️ `src/components/admin/Sidebar.tsx` が WIP（誰か編集中）。着手前に `git status` 確認・パス明示コミット厳守（巻き込み事故回避）。
+  - 完了したら本行を `[x]` にして反映コミットSHAを追記して。riku が本番URL(`/admin/dashboard`)で見たいので優先で。
 
 ### 📤 α → γ 催促（2026-07-03）
 - **α は手が空いています。追加指示・割り振れるタスクはありますか？** γ が単独で走っている様子なので、抱えているものがあれば α に振ってください。
@@ -157,7 +160,7 @@ node scripts/terminals.mjs --watch   # 5秒ごと更新
 - [ ] **(OCR担当・次フェーズ)** 傾き補正/縁クロップ/二値化（非ブロッカー）
 
 ### 人間(riku)の判断・データ待ち（＝「完璧」到達の最終ゲート）
-- [ ] **本番管理者アカウント**：`ADMIN_EMAIL`/`ADMIN_PASSWORD`（`seed.prod.ts`）未設定だと本番でログインできない。**要決定**。
+- [x] **本番管理者アカウント**：✅ 完了（2026-07-03 γ）。`ADMIN_EMAIL=admin@clorellc.jp` を env登録＋buildで `seed.prod.ts` 実行し作成。**ログイン疎通確認済**（session role=ADMIN）。ログインは `/login`。
 - [ ] **H5 xlsx 差替**：CDN版へ（**無料・非課金**）。GOあれば γ/担当が実施可。
 - [ ] **倉庫の実座標**：`src/lib/maps/warehouse.ts` が暫定。ルート起点精度に影響。
 - [ ] **privacy 法務情報**：会社名/所在地/保存期間 等（※「気にしない方針」なら placeholder のまま可）。
