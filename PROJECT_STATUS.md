@@ -1549,6 +1549,10 @@ npm run db:seed:prod
 | 2026-07-03 | OCR v6-1 画像品質 | image-quality に領域解析実装(右端切れ/上部の影/白飛び/下部余白・縮小画像で高速化)。mobile-quality-checkのTODO実装。カメラUIに撮影枠ガイド。/driver/camera・/admin camera対応 |
 | 2026-07-03 | OCR v6-2 前処理設定化 | 前処理を環境変数で調整可能に(OCR_PREPROCESS_TARGET_LONG_EDGE=3600等)。長辺3600px化・CLAHE・sharpen・payload保護・前処理メタ(originalWidth等)返却。preprocessImageForOcrDetailed追加。送信は1画像1回のまま |
 | 2026-07-03 | OCR v6-3 誤読辞書 | misread-dictionary拡張: S→5・B→8・|→1・全角/各種ハイフン統一。数値/コード欄(配車No/伝票No/電話/数量)限定で氏名・住所は非対象。全OCR経路に反映 |
+| 2026-07-03 | OCR v6-4 取込確認 | REVIEW_REASON_DETAILS追加・行ごとに要確認理由の詳細文＋「内訳計≠総数」差分表示。自動救済にW番号救済(配車Noから復元)追加 |
+| 2026-07-03 | OCR v6-5 精度レポート | import-accuracy拡張: 自動救済率/要確認率・要確認理由TOP・取込方式別(画像数)・W番号別(明細数)。統計のみ・個人情報非表示 |
+| 2026-07-03 | OCR v6-6 座標パーサー堅牢化 | l1m-row-block-parser: 数量列を左→右整列＋数値フィルタ(常温/クーラー/ケース/総数の割当ズレ防止)・配車No誤読耐性(ハイフン消失/l↔1でブロック取りこぼし防止) |
+| 2026-07-03 | OCR強化設計書 | OCR_ENHANCEMENT_DESIGN.md作成(調査結果・実装済み・要実画像検証項目・検証ループ手順)。Engine2最適/Engine3は座標非対応で不採用を明記 |
 ---
 
 ## ✅ 予測値・推定値の誤適用対策（実装完了）
@@ -1740,3 +1744,63 @@ npm run db:seed:prod
 | 再OCRダイアログ（修正済み項目表示） | フロントエンド UI 機能・次フェーズ |
 | location override 複数候補表示 | UIフロント機能・次フェーズ |
 | AUDIT ロール新設 | 権限管理の大規模改変が必要・将来フェーズ |
+
+---
+
+## 2026-07-03 追加（管理画面担当セッション）
+
+> 3画面同時稼働中。管理画面まわりのファイルのみ変更（ドライバー側 TodayClient.tsx は非編集）。
+
+### ① 取込センターを PDF / CSV のみに（運用判断）
+- `/admin/dispatch-import` の表示を **PDF取込 / CSV・Excel取込** のみに変更
+- 画像OCR・表データ貼付・スマホカメラOCR は **UI 非表示**（`HIDDEN_IMPORT_METHODS` に退避）
+- コード・ルート・API（`dispatch-import/camera` 等）は**削除せず保持** → `IMPORT_METHODS` に戻せば即再表示
+- 注意: CLAUDE.md の「画像OCR・カメラOCRは主力機能」方針に対する運用上の一時非表示
+
+### ② ドライバー別 進捗詳細ページ
+- 新規: `/admin/progress/[driverId]`（Server Component・日付切替可）
+- 担当件数／未完了／完了／不在／持戻り／スキップ集計＋進捗バー＋明細テーブル
+- `ProgressDriverCard` に「個別ページ」リンク追加
+
+### ③ 増便申請フォーム（管理者・ドライバー双方 / 後でCARIO連携）
+- 項目: 対象日・対象デポ・該当便・台数・割当先(任意)・申請理由
+- 新テーブル: `extra_vehicle_requests`（migration: `20260703160000_add_extra_vehicle_requests`・`IF NOT EXISTS` 追記型）
+  - **DB適用は各自 `npm run db:migrate` で実施**（本セッションでは reset/apply していない）
+- 型: `src/types/extra-vehicle-request.ts`
+- API:
+  - `GET/POST /api/extra-vehicle-requests`（一覧・作成 / ADMIN=全件, DRIVER=自分のみ）
+  - `POST /api/admin/extra-vehicle-requests/[id]/approve|reject|send-cario`
+- CARIO連携: `src/lib/cario/extra-vehicle.ts`（統合ポイントのみ・**現状は未接続で未送信**）
+- 画面:
+  - 管理者: `/admin/extra-vehicle-requests`（一覧・申請・承認/却下・CARIO送信）＋サイドバー「増便申請」
+  - ドライバー: `/driver/extra-vehicle-request`（申請＋自分の履歴）
+  - ⚠️ ドライバー画面への導線リンク（TodayClient）は**未追加**。ドライバー側担当が `/driver/extra-vehicle-request` へのリンクを追加すること
+- audit_logs: 件数・状態のみ記録（申請理由本文は保存しない）
+
+### 品質確認
+- `npm run typecheck` ✅ / `npm run lint` ✅
+- `next build` は他画面の dev を壊さないため未実行（各自の安全なタイミングで実施）
+
+### ③-追記 増便のCARIO送信を実接続コード化（読み取り系連携完了を受けて）
+- `src/lib/cario/extra-vehicle.ts` をモック→**実POST**に差し替え（`client.ts` と同じ Bearer認証・BaseURL・タイムアウト・エラー方針）
+- 判定: APIキー未設定=not_sent / 2xx=sent(返却ID保持) / 401・403・404・5xx=failed（理由付き）
+- **残る依存: CARIO側の増便書き込みエンドポイント**（読み取り系=assignments/drivers/shift-requests は GET のみ提供済み）
+  - 送信先は `CARIO_EXTRA_VEHICLE_PATH`（既定 `/api/external/rakuten/extra-vehicle`＝推定パス）で差し替え可
+  - CARIO側パス確定/公開→環境変数設定だけで実送信有効。未提供なら 404=failed（虚偽の送信済みにしない）
+- セキュリティ: APIキー・URL・payload・生レスポンスをログ出力しない
+
+### ③-訂正 増便の報告先はCARIO公式LINE（専用グループへpush）に変更
+> 前項「CARIO REST POST」は撤回。増便は **CARIO公式LINE（LINE Messaging API）から専用グループへ、指定フォーマットで報告** する方式に確定。
+
+- 削除: `src/lib/cario/extra-vehicle.ts` / `.../[id]/send-cario` ルート / `CARIO_EXTRA_VEHICLE_PATH`
+- 新規:
+  - `src/lib/line/format.ts` … 報告本文の整形（`7/3 / 対象デポ / 該当便 / 台数(1台→石毛) / 申請理由`）。クライアント/サーバー両用の純粋関数
+  - `src/lib/line/extra-vehicle-report.ts` … LINE Messaging API push（`/v2/bot/message/push`・Bearer・タイムアウト・PII非ログ）
+  - `POST /api/admin/extra-vehicle-requests/[id]/report-line` … 報告実行（ADMIN・却下以外で可）
+- 管理画面: 「LINEで報告」ボタン＋「報告文をコピー」＋本文プレビュー（LINE未設定でも手動報告できる）
+- DBは不変（`cario_sync_status`等を報告ステータスとして流用。ラベルは「未報告/報告待ち/LINE報告済み/報告失敗」）
+- 必要な環境変数（未設定なら送信せず本文コピーで手動報告）:
+  - `LINE_CHANNEL_ACCESS_TOKEN`（CARIO公式アカウントのMessaging APIトークン）
+  - `LINE_EXTRA_VEHICLE_GROUP_ID`（公式アカウントが参加する専用グループID）
+- **残る依存**: ①公式アカウントのMessaging APIトークン ②公式アカウントを専用グループに参加させグループIDを取得（webhook等）
+- 品質: `npm run typecheck` ✅ / `npm run lint` ✅

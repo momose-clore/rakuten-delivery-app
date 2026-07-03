@@ -14,6 +14,13 @@ import { correctDigitMisreads, toHalfWidth } from "@/lib/ocr/misread-dictionary"
 
 const DISPATCH_KEY_RE = /^\d{1,3}-\d{1,2}$/;
 
+/** 配車No判定（誤読補正込み：ハイフン消失・l↔1・全角対応でブロック開始の取りこぼしを防ぐ） */
+function isDispatchKeyText(t: string): boolean {
+  const s = t.trim();
+  if (DISPATCH_KEY_RE.test(s)) return true;
+  return DISPATCH_KEY_RE.test(correctDigitMisreads(toHalfWidth(s)));
+}
+
 /** OCR単語から L1M 明細ブロックを抽出 */
 export function parseL1MRowBlocks(
   words: OcrWord[],
@@ -32,7 +39,7 @@ export function parseL1MRowBlocks(
   const blockStarts: number[] = [];
   for (let i = 0; i < sorted.length; i++) {
     const w = sorted[i];
-    if (w.left < leftBoundary && DISPATCH_KEY_RE.test(w.text.trim())) {
+    if (w.left < leftBoundary && isDispatchKeyText(w.text)) {
       blockStarts.push(i);
     }
   }
@@ -48,7 +55,7 @@ export function parseL1MRowBlocks(
 
     // 配車No
     const dispatchKeyRaw = blockWords.find(
-      (w) => w.left < leftBoundary && DISPATCH_KEY_RE.test(w.text.trim())
+      (w) => w.left < leftBoundary && isDispatchKeyText(w.text)
     )?.text ?? "";
     const dispatchKey = extractDispatchKey(dispatchKeyRaw, meta.waveNo);
 
@@ -57,8 +64,10 @@ export function parseL1MRowBlocks(
       (w) => w.left >= leftBoundary && w.left < quantityBoundary
     ).sort((a, b) => a.top - b.top);
 
-    // 数量列の単語
-    const quantityWords = blockWords.filter((w) => w.left >= quantityBoundary);
+    // 数量列の単語（左→右に整列＝常温/クーラー/ケース/総数 の並びを保証）
+    const quantityWords = blockWords
+      .filter((w) => w.left >= quantityBoundary)
+      .sort((a, b) => a.left - b.left);
 
     // 伝票No・氏名・電話・住所をラベルベースで抽出
     const centerText = centerWords.map((w) => w.text).join(" ");
@@ -74,10 +83,12 @@ export function parseL1MRowBlocks(
     const rawAddress = addressMatch ? addressMatch[1] : centerText;
     const { value: address, suspect: addressSuspect } = extractAddress(rawAddress);
 
-    // 数量
-    const qTexts = quantityWords.map((w) => correctDigitMisreads(toHalfWidth(w.text)));
+    // 数量（数値のみ抽出して左→右で常温/クーラー/ケース/総数に割当）
+    const qNums = quantityWords
+      .map((w) => correctDigitMisreads(toHalfWidth(w.text)).replace(/[^\d]/g, ""))
+      .filter((t) => t.length > 0);
     const { normalOricon, coolerBox, caseCount, totalCount } = extractCounts(
-      qTexts[0] ?? "", qTexts[1] ?? "", qTexts[2] ?? "", qTexts[3] ?? ""
+      qNums[0] ?? "", qNums[1] ?? "", qNums[2] ?? "", qNums[3] ?? ""
     );
 
     // メモ（数量エリア下の文章）
