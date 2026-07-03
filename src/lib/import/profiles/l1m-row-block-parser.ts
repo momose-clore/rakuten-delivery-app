@@ -127,9 +127,34 @@ export function parseL1MRowBlocks(
     const nameMatch = centerText.match(/氏名[\s:：]*([\p{L}ぁ-んァ-ン一-龠\s]{2,20})/u);
     const customerName = nameMatch ? extractName(nameMatch[1]) : extractName(centerText);
 
-    // 住所（「住所」ラベル後、または郵便番号パターンの後）
-    const addressMatch = centerText.match(/住所[\s:：]*([\s\S]+?)(?:$|氏名|電話|伝票)/);
-    const rawAddress = addressMatch ? addressMatch[1] : centerText;
+    // 住所：L1Mのサブ行順（伝票No→氏名→連絡先→住所）を利用し、住所行の起点yより下の
+    // 中央語を (top,left) 順で結合する。文字列の非貪欲マッチや住所ラベル依存だと、語順の
+    // 乱れ・住所ラベルの読み落としで住所が欠落するため、y座標ベースで頑健に拾う。
+    // 住所行の起点y：電話番号(0始まりで判別容易)/連絡先ラベルの下端＝住所行を主アンカーにする
+    // （住所ラベルのOCRは読み落としやすく、番地/郵便番号の位置ずれにも弱いため副次扱い）。
+    // 電話は必ず0始まりのため ^0 で限定し、郵便番号(123-0841)や番地(40-26)を誤検出しない。
+    let addrTop = -1;
+    const phoneish = centerWords.filter((w) => {
+      if (w.text.includes("連絡") || w.text.includes("電話")) return true;
+      const t = toHalfWidth(w.text).replace(/\s/g, "");
+      return /^0\d{1,3}-\d{2,4}-\d{3,4}$/.test(t) || /^0\d{9,10}$/.test(t);
+    });
+    if (phoneish.length > 0) {
+      addrTop = Math.max(...phoneish.map((w) => w.top)) + 1;
+    } else {
+      const addrLabel = centerWords.find((w) => w.text.includes("住所"));
+      if (addrLabel) addrTop = addrLabel.top - 2;
+    }
+    let rawAddress: string;
+    if (addrTop >= 0) {
+      rawAddress = centerWords
+        .filter((w) => w.top >= addrTop && !w.text.includes("住所"))
+        .sort((a, b) => a.top - b.top || a.left - b.left)
+        .map((w) => w.text)
+        .join("");
+    } else {
+      rawAddress = centerText;
+    }
     const { value: address, suspect: addressSuspect } = extractAddress(rawAddress);
 
     // 数量（数値のみ抽出して左→右で常温/クーラー/ケース/総数に割当）
