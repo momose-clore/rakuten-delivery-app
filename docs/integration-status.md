@@ -103,10 +103,10 @@ riku 指示：Googleマップ連携の“性能”を上げる。**A（配送を
 
 ### 🅳 住所精度（ピンのズレ解消）— 担当 β
 - **前提**：無料のGSI(国土地理院)は町丁目レベルで**番地精度はGoogleに劣る**→ **Google置換ではなくフォールバック/検算に限定**。
-- [ ] **D① ジオコーディング・キャッシュ**（同一住所の再変換をDB保存で回避＝**Googleコスト減**・高速化）… `src/lib/maps/geocode.ts` 呼出側。
+- [x] **D① ジオコーディング・キャッシュ** → **α完了（`56f578c`）**。`GeocodeCache` モデル＋migration `20260704145258_add_geocode_cache`（geocode_cache テーブル・additive/既存非変更）。`geocodeAddress` が正規化キーで参照→ヒット即返却/ミス時のみGoogle・GSI→結果保存（fire-and-forget）。生成クライアントはgitignore＝Vercel build時に再生成・migrationは `prisma migrate deploy` で本番自動適用。ビルド緑・migrationローカル適用確認済。氏名/電話/伝票Noは保存せず住所キーと座標のみ。
 - [x] **D② 住所正規化を変換前に強化** → **α完了（`2200ca4`）**。`geocodeAddress` が `normalizeAddress().normalizedAddress`（建物名除去・全角半角統一）で問い合わせ→取れなければ生住所。`src/lib/maps/geocode.ts`。
-- [ ] **D③ 精度ランクで自動フラグ**（`locationType`/`source` が APPROXIMATE/gsi のものを「⚠要確認ピン」に自動化→補正導線へ）… **geocode側で `source`(google|gsi) を返す土台は実装済**（`2200ca4`）。呼出側/UIでのフラグ付けが残り。
-- [ ] **D④ 承認済みピン(override)の同一住所 自動再利用**（直すほど精度↑）。※ `src/lib/address/location-override-matcher.ts` 既存を活用。
+- [x] **D③ 精度ランクで自動フラグ** → **α完了（`9ad5134`）**。`geocode` route が結果精度から `coordinateConfidence` を HIGH/MEDIUM/LOW 判定（gsi・APPROXIMATE等=LOW→UIの低信頼「⚠要確認」に反映）。
+- [x] **D④ 承認済みピン(override)の同一住所 自動再利用** → **α完了（`9ad5134`）**。`findApprovedOverride` を geocode route に接続。承認済みピンを再利用しGoogle呼び出し節約（`reusedCount`）・ADMIN_APPROVED確定座標。
 - [x] **D⑤ GSI 無料フォールバック** → **α完了（`2200ca4`）**。Google失敗時に国土地理院(GSI・無料・キー不要・町丁目レベル)へフォールバック。`source="gsi"` で低精度を明示。
 - 工数目安：約2〜2.5人月 / 運用費 ¥0（むしろD①でGoogleコスト減）。
 
@@ -277,6 +277,24 @@ riku の Downloads の実ファイルを無料デコーダ(zxing)で実測:
 
 ### 進め方
 γ は decoder 完了。**α が配線** → barcodeText 確定値化で完了。**αとγ独立並行で完了まで**。質問/要望はこの節 or α受付ボックスへ。
+
+## 🚀 改善・追加バックログ（riku「全部やる」2026-07-04・γ集約）
+
+γが全体調査して抽出した改善/追加。**各担当は自分の項目を進めて `[x]`＋結果1行を追記**。進行中の別件（OCR精度=PaddleOCR / ルート=ORS / 住所=D / セキュリティページ）とは別枠。
+
+| # | 項目 | 担当 | 優先 | 状態 |
+|---|---|---|---|---|
+| 3 | **CI（型/lint/test自動チェック）** ビルド破壊の再発防止 | **γ** | ★高 | ✅ **完了**（`.github/workflows/ci.yml`・`60b0463`。push/PRで typecheck/lint/test） |
+| 1 | **遅配のリアルタイム活用＆通知**：締切カウントダウン/遅配バッジ/遅配リスト＋Wave締切間近のLINE通知 | β(UI)＋γ(API済)＋LINE担当(通知) | ★高 | 🟡 基盤済(`waves.ts`/`/api/delivery-timing/summary`)・**UI/通知未接続** |
+| 2 | **配達完了時刻 `completedAt` 記録**（遅配の実績計測・KPI化） | schema/OCR or β | ★高 | ⬜ schema追加（生成client差分に注意＝ツリー安定時に） |
+| 4 | **KPIダッシュボード**（遅配率/完了率/ドライバー別/OCR精度推移） | β | 中 | ⬜ dashboardは骨組み。γが集計API提供可 |
+| 5 | **不在→再配達フロー**（ABSENT/RETURNED の再配達導線） | β | 中 | ⬜ |
+| 6 | **通知全般**（新規割当・シフト変更・不在）LINE基盤(`lib/line/send.ts`)活用 | LINE担当 | 中 | ⬜ |
+| 7 | **ドライバーPWA/オフライン**（電波断でもtodayルート閲覧＋更新キュー） | β | 中 | ⬜ PWA土台あり |
+| 8 | **カメラ画像のクライアント圧縮**（アップ前圧縮で高速化・通信量減） | OCR担当 | 低 | ⬜ |
+| 9 | **締切考慮の割当最適化**（auto-assign＋waves＋routeで「Wave締切を守る割当」） | β(配車)＋γ(waves/CARIO支援) | 中 | ⬜ |
+
+**γが自走で担える支援**：①遅配の集計/ドライバー向けtiming API、④KPI集計API、⑨割当への遅配締切データ供給。UI描画・配車ロジック本体はβ、通知はLINE担当、画像処理はOCR担当。**各担当は上表の自分の行から着手を**。
 
 ## 運用上の注意（共有事項）
 
