@@ -47,7 +47,11 @@ export function LiveMapClient() {
   const [filter, setFilter] = useState<"all" | "active" | "stale">("all");
   const [routePath, setRoutePath] = useState<[number, number][] | null>(null); // A③: 選択号車の道なりルート
   const [routeStops, setRouteStops] = useState<RouteStop[] | null>(null); // 配送先ピン（順番＋宛名）
+  const [dayDrivers, setDayDrivers] = useState<{ driverId: string; name: string; vehicle: string; stopCount: number }[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
   const load = useCallback(async () => {
     try {
@@ -75,6 +79,24 @@ export function LiveMapClient() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [load]);
+
+  // 本日配送のあるドライバー一覧を取得（GPS送信の有無に関わらず選べるようにする）。
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/routes/drivers?date=${dateStr}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { drivers: typeof dayDrivers };
+        if (!cancelled) setDayDrivers(data.drivers ?? []);
+      } catch {
+        /* 取得失敗は無視（セレクタが空になるだけ） */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [dateStr]);
 
   // A③: 号車を選択したら、その当日ルート（route_order順）の道なり経路を取得して地図に描く。
   // ORS_API_KEY 未設定/未生成なら path:null＝線は出ないだけ（GPS表示は不変）。
@@ -147,6 +169,19 @@ export function LiveMapClient() {
         <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
           {locations.length} 台 稼働中
         </span>
+        {/* 本日配送ドライバーのセレクタ（GPS未送信でもルート/配送先を表示できる） */}
+        <select
+          value={selected ?? ""}
+          onChange={(e) => setSelected(e.target.value || null)}
+          className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700"
+        >
+          <option value="">本日配送の号車を選択…（{dayDrivers.length}台）</option>
+          {dayDrivers.map((d) => (
+            <option key={d.driverId} value={d.driverId}>
+              {d.vehicle}／{d.name}（{d.stopCount}件）
+            </option>
+          ))}
+        </select>
         <div className="ml-auto flex items-center gap-3 text-xs text-gray-500">
           <span>30秒ごとに自動更新</span>
           {updatedAt && <span>最終更新 {updatedAt}</span>}

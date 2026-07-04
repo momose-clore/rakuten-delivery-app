@@ -340,7 +340,10 @@ export function LiveVehicleMap({
       m.bindPopup(`<b>${s.seq}. ${nameHtml}</b>${buildingHtml}${addressHtml}${lateHtml}`);
       stopMarkersRef.current.push(m);
     }
-  }, [routeStops, ready]);
+    // 選択ルートが収まるよう画角を合わせる（GPS未送信の号車でも配送先が見える）。
+    const coords: LatLng[] = [[depot.lat, depot.lng], ...routeStops.map((s) => [s.lat, s.lng] as LatLng)];
+    if (coords.length > 1) map.fitBounds(L.latLngBounds(coords), { padding: [50, 50], maxZoom: 16 });
+  }, [routeStops, ready, depot]);
 
   return (
     <>
