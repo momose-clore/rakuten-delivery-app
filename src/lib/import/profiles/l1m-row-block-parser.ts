@@ -60,8 +60,12 @@ function reconstructDispatchKey(rowWords: OcrWord[]): string | null {
  * 都道府県より前にあった非郵便番号部分（番地等）を末尾へ回す。郵便番号は本体から除去。
  */
 function canonicalizeL1MAddress(raw: string): string {
-  const s = (raw ?? "").replace(/[\s　]/g, "").replace(/〒/g, "");
+  let s = (raw ?? "").replace(/[\s　]/g, "").replace(/〒/g, "");
   if (!s) return "";
+  // 住所に現れないラベル語（隣セルの混入）を除去
+  s = s.replace(/伝票No?|氏名|連絡先|連総先|特殊フラグ|フラグ|お客様情報/g, "");
+  // メモ文（住所に絶対出ない言い回し）以降のみを切り落とす（valid住所を誤って切らない範囲に限定）
+  s = s.replace(/(電話して|お願いし|下さい|ください|インターホン).*$/, "");
   const zip = (s.match(/\d{3}-?\d{4}/) ?? [""])[0];
   const prefM = s.match(/(東京都|北海道|京都府|大阪府|[^\d\s]{2,3}県)/);
   if (!prefM) return zip ? s.replace(zip, "") : s;
