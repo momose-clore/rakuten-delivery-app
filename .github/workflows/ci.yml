@@ -1,0 +1,35 @@
+name: CI
+
+# push/PR で型・lint・テストを自動チェックし、ビルド破壊を事前検知する。
+# （過去に barcode.ts の型エラーで全ターミナルの本番デプロイが停止した事故の再発防止）
+# ※ next build は `prisma migrate deploy`(DB接続) を含むため CI では走らせない。
+#    型崩れは typecheck(tsc) で捕捉できる（実際の事故はこれで防げる）。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install deps
+        run: npm ci
+      - name: Prisma generate (no DB)
+        run: npx prisma generate
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Unit tests
+        run: npm test
