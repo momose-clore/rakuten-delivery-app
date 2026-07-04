@@ -78,8 +78,11 @@ export async function preprocessImageForOcrDetailed(buffer: Buffer): Promise<{ b
     steps.push("normalize", "clahe");
   }
   if (ENABLE_SHARPEN) {
-    pipeline = pipeline.sharpen({ sigma: 1.4 });
-    steps.push("sharpen");
+    // アンサープマスク（m2）で文字エッジを立てつつ、平坦部のノイズ増幅を抑える。
+    // 固定sigmaより出力JPEGが小さく（高解像度でも1MB以下に収まりやすい＝ペイロード保護での
+    // 解像度低下を避けられる）、ブレ気味の文字の可読性も上がる。
+    pipeline = pipeline.sharpen({ sigma: 1.5, m1: 0, m2: 2.5 });
+    steps.push("unsharp");
   }
 
   // 高解像度化でペイロードが膨らむため品質は88（罫線と文字が潰れない範囲）
