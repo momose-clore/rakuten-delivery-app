@@ -25,6 +25,9 @@ export type MapPin = {
 
 export type MapDepot = { name: string; lat: number; lng: number; subtitle?: string };
 
+/** 配送先の停止点（配送順＋宛名）。地図に番号付きピンで表示する。 */
+export type RouteStop = { seq: number; lat: number; lng: number; name?: string | null };
+
 // 標準地図：OpenStreetMap Japan（日本語ラベル・Googleマップ風の色付きロードマップ・無料・キー/課金不要）
 // 地名/駅名/区名が日本語表示。CARTO Voyager は英語ラベルだったため日本語タイルに変更。
 const STD_TILE = {
@@ -73,6 +76,16 @@ function getLeaflet(): LeafletStatic | undefined {
   return (window as unknown as { L?: LeafletStatic }).L;
 }
 
+/** ポップアップに個人情報（宛名）を差し込む前の最小 HTML エスケープ（XSS防止） */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function pinIcon(L: LeafletStatic, label: string, color: string, stale: boolean) {
   return L.divIcon({
     className: "",
@@ -90,6 +103,7 @@ export function LiveVehicleMap({
   showLegend = true,
   className = "absolute inset-0 z-0",
   routePath = null,
+  routeStops = null,
 }: {
   pins: MapPin[];
   depot: MapDepot;
@@ -99,6 +113,8 @@ export function LiveVehicleMap({
   className?: string;
   /** A③: 道なり経路（[lat,lng] の配列）。ORS Directions のジオメトリを渡すと地図に線を描く。 */
   routePath?: LatLng[] | null;
+  /** 配送先ピン（配送順＋宛名）。選択号車のルート上の停止点を番号付きで表示する。 */
+  routeStops?: RouteStop[] | null;
 }) {
   const [sat, setSat] = useState(false);
   const [mapError, setMapError] = useState(false);
@@ -109,6 +125,7 @@ export function LiveVehicleMap({
   const tileRef = useRef<LeafletLayer | null>(null);
   const markersRef = useRef<Map<string, LeafletMarker>>(new Map());
   const routeLayerRef = useRef<LeafletLayer | null>(null); // A③: 道なり経路レイヤー
+  const stopMarkersRef = useRef<LeafletMarker[]>([]); // 配送先ピン（順番＋宛名）
   const fittedRef = useRef(false); // 初回自動フィット済みか
 
   // 全号車＋拠点が収まる画角に合わせる
@@ -271,6 +288,31 @@ export function LiveVehicleMap({
       }).addTo(map);
     }
   }, [routePath, ready]);
+
+  // 配送先ピン（配送順＋宛名）を描画／更新
+  useEffect(() => {
+    const L = getLeaflet();
+    const map = mapRef.current;
+    if (!L || !map || !ready) return;
+    // 既存の配送先ピンを消す
+    for (const m of stopMarkersRef.current) m.remove();
+    stopMarkersRef.current = [];
+    if (!routeStops || routeStops.length === 0) return;
+
+    for (const s of routeStops) {
+      const icon = L.divIcon({
+        className: "",
+        html: `<div style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:9999px;background:#26324F;color:#fff;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.4);border:1.5px solid #fff;">${s.seq}</div>`,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      });
+      const m = L.marker([s.lat, s.lng], { icon }).addTo(map);
+      // 宛名は個人情報。表示のみ（ログには出さない）。HTMLエスケープして注入。
+      const nameHtml = s.name ? escapeHtml(s.name) : "（宛名なし）";
+      m.bindPopup(`<b>${s.seq}. ${nameHtml}</b>`);
+      stopMarkersRef.current.push(m);
+    }
+  }, [routeStops, ready]);
 
   return (
     <>

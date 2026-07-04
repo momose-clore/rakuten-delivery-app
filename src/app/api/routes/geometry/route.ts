@@ -43,15 +43,30 @@ export async function GET(req: NextRequest) {
       },
     },
     orderBy: { routeOrder: "asc" },
-    include: { deliveryItem: { select: { lat: true, lng: true } } },
+    include: { deliveryItem: { select: { lat: true, lng: true, customerName: true } } },
   });
 
-  const orderedPoints: GeoPoint[] = assignments
-    .filter((a) => a.deliveryItem.lat != null && a.deliveryItem.lng != null)
-    .map((a) => ({ id: a.id, lat: a.deliveryItem.lat as number, lng: a.deliveryItem.lng as number }));
+  const withCoords = assignments.filter(
+    (a) => a.deliveryItem.lat != null && a.deliveryItem.lng != null,
+  );
+
+  const orderedPoints: GeoPoint[] = withCoords.map((a) => ({
+    id: a.id,
+    lat: a.deliveryItem.lat as number,
+    lng: a.deliveryItem.lng as number,
+  }));
+
+  // 配送先ピン用（配送順＋宛名）。宛名は正当な配送データ（OCR取込）で、
+  // ADMIN or 本人ドライバーのみに返す。※ログには出さない（個人情報保護方針）。
+  const stops = withCoords.map((a, i) => ({
+    seq: a.routeOrder ?? i + 1,
+    lat: a.deliveryItem.lat as number,
+    lng: a.deliveryItem.lng as number,
+    name: a.deliveryItem.customerName ?? null,
+  }));
 
   const origin: GeoPoint = { id: "warehouse", lat: WAREHOUSE.lat, lng: WAREHOUSE.lng };
   const path = await getRouteGeometry(origin, orderedPoints, returnToWarehouse);
 
-  return NextResponse.json({ path, stopCount: orderedPoints.length });
+  return NextResponse.json({ path, stops, stopCount: orderedPoints.length });
 }

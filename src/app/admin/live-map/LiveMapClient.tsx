@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LiveVehicleMap, type MapPin } from "@/components/map/LiveVehicleMap";
+import { LiveVehicleMap, type MapPin, type RouteStop } from "@/components/map/LiveVehicleMap";
 import { WAREHOUSE } from "@/lib/maps/warehouse";
 
 const POLL_MS = 30_000; // 30秒ポーリング
@@ -46,6 +46,7 @@ export function LiveMapClient() {
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "stale">("all");
   const [routePath, setRoutePath] = useState<[number, number][] | null>(null); // A③: 選択号車の道なりルート
+  const [routeStops, setRouteStops] = useState<RouteStop[] | null>(null); // 配送先ピン（順番＋宛名）
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
@@ -81,6 +82,7 @@ export function LiveMapClient() {
     if (!selected) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setRoutePath(null);
+      setRouteStops(null);
       return;
     }
     let cancelled = false;
@@ -93,13 +95,22 @@ export function LiveMapClient() {
           { cache: "no-store" },
         );
         if (!res.ok) {
-          if (!cancelled) setRoutePath(null);
+          if (!cancelled) {
+            setRoutePath(null);
+            setRouteStops(null);
+          }
           return;
         }
-        const data = (await res.json()) as { path: [number, number][] | null };
-        if (!cancelled) setRoutePath(data.path ?? null);
+        const data = (await res.json()) as { path: [number, number][] | null; stops?: RouteStop[] };
+        if (!cancelled) {
+          setRoutePath(data.path ?? null);
+          setRouteStops(data.stops ?? null);
+        }
       } catch {
-        if (!cancelled) setRoutePath(null);
+        if (!cancelled) {
+          setRoutePath(null);
+          setRouteStops(null);
+        }
       }
     })();
     return () => {
@@ -219,7 +230,7 @@ export function LiveMapClient() {
 
         {/* 地図 */}
         <div className="relative flex-1 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
-          <LiveVehicleMap pins={pins} depot={DEPOT} follow={selected} routePath={routePath} />
+          <LiveVehicleMap pins={pins} depot={DEPOT} follow={selected} routePath={routePath} routeStops={routeStops} />
         </div>
       </div>
     </div>
