@@ -26,7 +26,15 @@ export type MapPin = {
 export type MapDepot = { name: string; lat: number; lng: number; subtitle?: string };
 
 /** 配送先の停止点（配送順＋宛名）。地図に番号付きピンで表示する。 */
-export type RouteStop = { seq: number; lat: number; lng: number; name?: string | null; building?: string | null };
+export type RouteStop = {
+  seq: number;
+  lat: number;
+  lng: number;
+  name?: string | null;
+  building?: string | null;
+  /** 遅配ステータス（waves.ts の deliveryTimingStatus 由来）。late=赤 / soon=橙 / それ以外=紺。 */
+  status?: "onTime" | "soon" | "late" | null;
+};
 
 // 標準地図：OpenStreetMap Japan（日本語ラベル・Googleマップ風の色付きロードマップ・無料・キー/課金不要）
 // 地名/駅名/区名が日本語表示。CARTO Voyager は英語ラベルだったため日本語タイルに変更。
@@ -308,9 +316,12 @@ export function LiveVehicleMap({
     if (!routeStops || routeStops.length === 0) return;
 
     for (const s of routeStops) {
+      // 遅配ステータスで色分け（late=赤 / soon=橙 / 通常=紺）。赤リング＋⚠で強調。
+      const stopColor = s.status === "late" ? "#dc2626" : s.status === "soon" ? "#d97706" : "#26324F";
+      const ring = s.status === "late" ? "box-shadow:0 0 0 3px rgba(220,38,38,.35),0 1px 3px rgba(0,0,0,.4);" : "box-shadow:0 1px 3px rgba(0,0,0,.4);";
       const icon = L.divIcon({
         className: "",
-        html: `<div style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:9999px;background:#26324F;color:#fff;font-size:11px;font-weight:700;box-shadow:0 1px 3px rgba(0,0,0,.4);border:1.5px solid #fff;">${s.seq}</div>`,
+        html: `<div style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:9999px;background:${stopColor};color:#fff;font-size:11px;font-weight:700;${ring}border:1.5px solid #fff;">${s.seq}</div>`,
         iconSize: [22, 22],
         iconAnchor: [11, 11],
       });
@@ -320,7 +331,8 @@ export function LiveVehicleMap({
       const buildingHtml = s.building
         ? `<br/><span style="color:#555;">🏢 ${escapeHtml(s.building)}</span>`
         : "";
-      m.bindPopup(`<b>${s.seq}. ${nameHtml}</b>${buildingHtml}`);
+      const lateHtml = s.status === "late" ? '<br/><span style="color:#dc2626;font-weight:700;">⚠ 遅配（時間帯超過）</span>' : s.status === "soon" ? '<br/><span style="color:#d97706;font-weight:700;">締切間近</span>' : "";
+      m.bindPopup(`<b>${s.seq}. ${nameHtml}</b>${buildingHtml}${lateHtml}`);
       stopMarkersRef.current.push(m);
     }
   }, [routeStops, ready]);
