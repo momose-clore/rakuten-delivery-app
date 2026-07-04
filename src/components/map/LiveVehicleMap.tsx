@@ -65,6 +65,7 @@ interface LeafletStatic {
   map(el: HTMLElement, opts?: Record<string, unknown>): LeafletMap;
   tileLayer(url: string, opts?: Record<string, unknown>): LeafletLayer;
   marker(center: LatLng, opts?: Record<string, unknown>): LeafletMarker;
+  polyline(latlngs: LatLng[], opts?: Record<string, unknown>): LeafletLayer;
   divIcon(opts: Record<string, unknown>): unknown;
   latLngBounds(coords: LatLng[]): unknown;
 }
@@ -88,6 +89,7 @@ export function LiveVehicleMap({
   follow = null,
   showLegend = true,
   className = "absolute inset-0 z-0",
+  routePath = null,
 }: {
   pins: MapPin[];
   depot: MapDepot;
@@ -95,6 +97,8 @@ export function LiveVehicleMap({
   follow?: string | null;
   showLegend?: boolean;
   className?: string;
+  /** A③: 道なり経路（[lat,lng] の配列）。ORS Directions のジオメトリを渡すと地図に線を描く。 */
+  routePath?: LatLng[] | null;
 }) {
   const [sat, setSat] = useState(false);
   const [mapError, setMapError] = useState(false);
@@ -104,6 +108,7 @@ export function LiveVehicleMap({
   const mapRef = useRef<LeafletMap | null>(null);
   const tileRef = useRef<LeafletLayer | null>(null);
   const markersRef = useRef<Map<string, LeafletMarker>>(new Map());
+  const routeLayerRef = useRef<LeafletLayer | null>(null); // A③: 道なり経路レイヤー
   const fittedRef = useRef(false); // 初回自動フィット済みか
 
   // 全号車＋拠点が収まる画角に合わせる
@@ -247,6 +252,25 @@ export function LiveVehicleMap({
     const target = pins.find((p) => p.id === follow);
     if (target) map.setView([target.lat, target.lng]);
   }, [follow, pins]);
+
+  // A③: 道なり経路（ORS Directions ジオメトリ）を描画／更新
+  useEffect(() => {
+    const L = getLeaflet();
+    const map = mapRef.current;
+    if (!L || !map || !ready) return;
+    // 既存の経路線を除去してから引き直す
+    if (routeLayerRef.current) {
+      routeLayerRef.current.remove();
+      routeLayerRef.current = null;
+    }
+    if (routePath && routePath.length >= 2) {
+      routeLayerRef.current = L.polyline(routePath, {
+        color: "#b8923f",
+        weight: 4,
+        opacity: 0.85,
+      }).addTo(map);
+    }
+  }, [routePath, ready]);
 
   return (
     <>
