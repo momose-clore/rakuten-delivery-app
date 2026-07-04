@@ -9,6 +9,7 @@
  * ※ zxing-wasm は決定的デコーダで、Gemini/Cloud Vision等のAI-OCRではない。
  */
 import sharp from "sharp";
+import type * as SharpNS from "sharp";
 import { readBarcodes } from "zxing-wasm";
 
 export interface DecodedBarcode {
@@ -17,7 +18,7 @@ export interface DecodedBarcode {
 }
 
 /** sharp で画像を RGBA 画素へ（zxing-wasm 入力形式） */
-async function toImageData(pipeline: sharp.Sharp) {
+async function toImageData(pipeline: SharpNS.Sharp) {
   const { data, info } = await pipeline
     .grayscale()
     .normalize()
@@ -37,7 +38,7 @@ export async function decodeBarcodes(imageBuffer: Buffer): Promise<DecodedBarcod
     for (const b of arr) if (b.text) found.set(`${b.format}:${b.text}`, { format: b.format, text: b.text });
   };
 
-  let meta: sharp.Metadata;
+  let meta: SharpNS.Metadata;
   try {
     meta = await sharp(imageBuffer).metadata();
   } catch {
@@ -47,7 +48,7 @@ export async function decodeBarcodes(imageBuffer: Buffer): Promise<DecodedBarcod
   const H = meta.height ?? 0;
   if (!W || !H) return [];
 
-  const attempts: Array<() => sharp.Sharp> = [
+  const attempts: Array<() => SharpNS.Sharp> = [
     () => sharp(imageBuffer).rotate(), // 全体
   ];
   // 左上（配車表の管理番号バーコード位置）を等倍＋2倍で
@@ -58,7 +59,8 @@ export async function decodeBarcodes(imageBuffer: Buffer): Promise<DecodedBarcod
   for (const mk of attempts) {
     try {
       const img = await toImageData(mk());
-      const res = await readBarcodes(img, { tryHarder: true, maxNumberOfSymbols: 20 });
+      // 型: zxing-wasm v3 の入力型に合わせる（img は ImageData 互換の {data,width,height}）
+      const res = await readBarcodes(img as unknown as Parameters<typeof readBarcodes>[0], { tryHarder: true, maxNumberOfSymbols: 20 });
       push(res.map((r) => ({ format: String(r.format), text: r.text })));
     } catch {
       // 個々の試行失敗は無視（次を試す）
