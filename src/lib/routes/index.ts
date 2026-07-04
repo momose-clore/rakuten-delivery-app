@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { WAREHOUSE } from "@/lib/maps/warehouse";
-import { sortByNearest, type GeoPoint } from "./sortByNearest";
+import { optimizeRoute, type GeoPoint } from "./sortByNearest";
 import { buildMapsUrls } from "@/lib/maps/url";
 
 export interface RouteGenerateResult {
@@ -57,7 +57,8 @@ export async function generateRoute(
     lng: a.deliveryItem.lng!,
   }));
 
-  const sorted = sortByNearest(origin, points);
+  // 最近隣法 → 2-opt 改善（外部API・キー不要で総距離を短縮）
+  const sorted = optimizeRoute(origin, points);
 
   // route_order を assignments に保存
   for (let i = 0; i < sorted.length; i++) {
