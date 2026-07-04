@@ -25,15 +25,19 @@ import {
   TruckIcon,
   MapPinned,
   PlusSquare,
+  ExternalLink,
   LogOut,
   UserCircle2,
+  type LucideIcon,
 } from "lucide-react";
 
 /* CLORE ブランドカラー（/admin-preview と同値） */
 const NAVY = "#26324F";
 const GOLD = "#b8923f";
 
-const navItems = [
+type NavItem = { href: string; label: string; icon: LucideIcon; external?: boolean };
+
+const navItems: NavItem[] = [
   { href: "/admin/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/admin/dispatch-import", label: "配送表取込", icon: FolderInput },
   { href: "/admin/dispatch-images", label: "画像アップロード", icon: ImageIcon },
@@ -46,6 +50,8 @@ const navItems = [
   { href: "/admin/progress", label: "配送進捗", icon: TruckIcon },
   { href: "/admin/live-map", label: "号車リアルタイム地図", icon: MapPinned },
   { href: "/admin/extra-vehicle-requests", label: "増便申請", icon: PlusSquare },
+  // 外部: CARIO（楽天）美女木シフトページ。新規タブで開く（CARIOログインが必要）。
+  { href: "https://cario-app-two.vercel.app/manager/shifts", label: "CARIOシフト", icon: ExternalLink, external: true },
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
@@ -64,23 +70,34 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
           </Link>
 
           <nav className="flex items-center overflow-x-auto no-scrollbar">
-            {navItems.map(({ href, label, icon: Icon }) => {
-              const active = pathname === href || pathname.startsWith(href + "/");
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  title={label}
-                  className={
-                    "flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-[13px] transition " +
-                    (active
-                      ? "text-white"
-                      : "border-transparent text-gray-300 hover:text-white")
-                  }
-                  style={active ? { borderColor: GOLD } : undefined}
-                >
+            {navItems.map(({ href, label, icon: Icon, external }) => {
+              const active = !external && (pathname === href || pathname.startsWith(href + "/"));
+              const className =
+                "flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-[13px] transition " +
+                (active ? "text-white" : "border-transparent text-gray-300 hover:text-white");
+              const style = active ? { borderColor: GOLD } : undefined;
+              const inner = (
+                <>
                   <Icon size={15} className="shrink-0" />
                   <span className="hidden xl:inline">{label}</span>
+                </>
+              );
+              // 外部リンク（CARIO 等）は新規タブで開く
+              return external ? (
+                <a
+                  key={href}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`${label}（外部・新規タブ）`}
+                  className={className}
+                  style={style}
+                >
+                  {inner}
+                </a>
+              ) : (
+                <Link key={href} href={href} title={label} className={className} style={style}>
+                  {inner}
                 </Link>
               );
             })}
