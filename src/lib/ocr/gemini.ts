@@ -11,6 +11,7 @@
  */
 import type { NormalizedDispatchRow, ImportBatchResult, L1MMetadata } from "@/types/import";
 import { calcBatchStats } from "@/lib/import/pipeline";
+import { extractDispatchKey } from "@/lib/ocr/extractors/dispatch-key";
 
 // gemini-flash-latest は無料枠で利用可（gemini-2.0-flash は無料枠対象外で429になることがある）
 const MODEL = process.env.GEMINI_MODEL ?? "gemini-flash-latest";
@@ -138,7 +139,7 @@ export async function extractL1MWithGemini(
       waveNo: parsed.waveNo,
       deliveryDate: parsed.deliveryDate,
       area: parsed.depotName ?? null,
-      dispatchKey: d.dispatchKey?.trim() || null,
+      dispatchKey: d.dispatchKey?.trim() ? extractDispatchKey(d.dispatchKey.trim(), parsed.waveNo) : null,
       invoiceNo: (d.invoiceNo ?? "").replace(/[^\d]/g, "") || null,
       customerName: d.customerName?.trim() || null,
       customerPhone: (d.customerPhone ?? "").replace(/[^\d]/g, "") || null,
