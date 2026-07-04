@@ -12,7 +12,8 @@
 import type { NormalizedDispatchRow, ImportBatchResult, L1MMetadata } from "@/types/import";
 import { calcBatchStats } from "@/lib/import/pipeline";
 
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+// gemini-flash-latest は無料枠で利用可（gemini-2.0-flash は無料枠対象外で429になることがある）
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-flash-latest";
 
 const RESPONSE_SCHEMA = {
   type: "object",
