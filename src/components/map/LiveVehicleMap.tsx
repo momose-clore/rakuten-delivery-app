@@ -32,6 +32,8 @@ export type RouteStop = {
   lng: number;
   name?: string | null;
   building?: string | null;
+  /** 住所（丁目・番地・号：OCR取込データ）。ポップアップに表示する。 */
+  address?: string | null;
   /** 遅配ステータス（waves.ts の deliveryTimingStatus 由来）。late=赤 / soon=橙 / それ以外=紺。 */
   status?: "onTime" | "soon" | "late" | null;
 };
@@ -331,8 +333,11 @@ export function LiveVehicleMap({
       const buildingHtml = s.building
         ? `<br/><span style="color:#555;">🏢 ${escapeHtml(s.building)}</span>`
         : "";
+      const addressHtml = s.address
+        ? `<br/><span style="color:#555;">📍 ${escapeHtml(s.address)}</span>`
+        : "";
       const lateHtml = s.status === "late" ? '<br/><span style="color:#dc2626;font-weight:700;">⚠ 遅配（時間帯超過）</span>' : s.status === "soon" ? '<br/><span style="color:#d97706;font-weight:700;">締切間近</span>' : "";
-      m.bindPopup(`<b>${s.seq}. ${nameHtml}</b>${buildingHtml}${lateHtml}`);
+      m.bindPopup(`<b>${s.seq}. ${nameHtml}</b>${buildingHtml}${addressHtml}${lateHtml}`);
       stopMarkersRef.current.push(m);
     }
   }, [routeStops, ready]);

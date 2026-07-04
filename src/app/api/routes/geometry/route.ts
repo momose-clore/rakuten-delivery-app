@@ -64,6 +64,8 @@ export async function GET(req: NextRequest) {
     lat: a.deliveryItem.lat as number,
     lng: a.deliveryItem.lng as number,
     name: a.deliveryItem.customerName ?? null,
+    // 住所（丁目・番地・号：OCR取込の正当データ）。無料の公的地図では号まで出ないため、配送先の実住所を表示する。
+    address: a.deliveryItem.address ?? null,
     // 建物名（ビル/アパート/マンション/商業施設）は配送先住所から抽出（OCRの正当データ）
     building: a.deliveryItem.address
       ? normalizeAddress(a.deliveryItem.address).buildingName
