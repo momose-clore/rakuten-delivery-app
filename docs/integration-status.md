@@ -318,6 +318,11 @@ riku の Downloads の実ファイルを無料デコーダ(zxing)で実測:
 
 **γが自走で担える支援**：①遅配の集計/ドライバー向けtiming API、④KPI集計API、⑨割当への遅配締切データ供給。UI描画・配車ロジック本体はβ、通知はLINE担当、画像処理はOCR担当。**各担当は上表の自分の行から着手を**。
 
+## 📨 LINE 増便申請グループ 本番設定完了（γ 2026-07-04）
+- 公式アカウント「**CARIO【楽天】**」(@753kuddz) の**増便申請専用グループ**を本番送信先に設定。
+- **本番 `LINE_EXTRA_VEHICLE_GROUP_ID` = `C79793f47e7bb25ec3d58064ee7200ccb`**（redeploy反映済み）。旧Webhook URL（死んだtrycloudflareトンネル）を本番`/api/line/webhook`へ修正→疎通OK・ボットのID返信で取得。
+- 送信導線 `POST /api/admin/extra-vehicle-requests/[id]/line-send` → このグループへ投稿→`carioSyncStatus=sent`。**増便担当**：承認時自動送信にするか手動ボタンのままかは設計次第。テストは相手(CARIO)本番グループのため文面注意 or `LINE_TEST_GROUP_ID` 利用を。
+
 ## 🧰 機能依頼：増便理由の Gemini バリエーション生成（riku指示 2026-07-04）＝増便担当＋OCR(Gemini)＋γ
 
 riku 要望：増便申請フォームの「増便理由」を**Geminiで毎回バリエーション豊かに生成**（プリセットも混ぜつつ、毎回違うパターン）。将来は配達進捗/遅配などの**実データから原因を拾って理由に反映**（＝下記【案・保留】）。
