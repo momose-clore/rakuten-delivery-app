@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { WAREHOUSE } from "@/lib/maps/warehouse";
 import { optimizeRoute, type GeoPoint } from "./sortByNearest";
+import { optimizeRouteRoad } from "./ors";
 import { buildMapsUrls } from "@/lib/maps/url";
 
 export interface RouteGenerateResult {
@@ -8,6 +9,7 @@ export interface RouteGenerateResult {
   routedCount: number;
   skippedCount: number; // lat/lng 未取得でスキップした件数
   mapsUrls: string[];
+  optimizer: "ors" | "local"; // ors=道路ベース(OpenRouteService) / local=直線+2-opt フォールバック
 }
 
 /**
@@ -57,8 +59,11 @@ export async function generateRoute(
     lng: a.deliveryItem.lng!,
   }));
 
-  // 最近隣法 → 2-opt 改善（外部API・キー不要で総距離を短縮）
-  const sorted = optimizeRoute(origin, points);
+  // A②: 道路ベース最適化（OpenRouteService・無料枠）を優先。
+  // ORS_API_KEY 未設定/失敗/件数過多なら A①（最近隣法+2-opt・直線）へ自動フォールバック。
+  const roadOptimized = await optimizeRouteRoad(origin, points, returnToWarehouse);
+  const optimizer: "ors" | "local" = roadOptimized ? "ors" : "local";
+  const sorted = roadOptimized ?? optimizeRoute(origin, points);
 
   // route_order を assignments に保存
   for (let i = 0; i < sorted.length; i++) {
@@ -99,9 +104,9 @@ export async function generateRoute(
       action: "GENERATE_ROUTE",
       targetType: "assignments",
       targetId: driverId,
-      afterData: { routedCount: sorted.length, skippedCount, waveNo: waveNo ?? null },
+      afterData: { routedCount: sorted.length, skippedCount, waveNo: waveNo ?? null, optimizer },
     },
   });
 
-  return { driverId, routedCount: sorted.length, skippedCount, mapsUrls };
+  return { driverId, routedCount: sorted.length, skippedCount, mapsUrls, optimizer };
 }

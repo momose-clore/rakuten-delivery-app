@@ -1,6 +1,7 @@
 // 増便申請の型定義（管理者・ドライバー双方が申請 / 後でCARIO連携）
 
 export type ExtraVehicleRequestStatus = "pending" | "approved" | "rejected";
+// 報告ステータス（DBの cario_* カラムを流用。CARIO公式LINEでの専用グループ報告状態）
 export type CarioSyncStatus = "not_sent" | "pending" | "sent" | "failed";
 export type RequesterRole = "ADMIN" | "DRIVER";
 
@@ -39,9 +40,10 @@ export const STATUS_LABEL: Record<ExtraVehicleRequestStatus, string> = {
   rejected: "却下",
 };
 
-export const CARIO_SYNC_LABEL: Record<CarioSyncStatus, string> = {
-  not_sent: "未送信",
-  pending: "送信待ち",
-  sent: "CARIO送信済み",
-  failed: "送信失敗",
+// 報告ステータス表示（CARIOがpull→公式LINEで専用グループへ報告した状態）
+export const REPORT_STATUS_LABEL: Record<CarioSyncStatus, string> = {
+  not_sent: "未報告",
+  pending: "取得待ち",
+  sent: "報告済み",
+  failed: "報告失敗",
 };

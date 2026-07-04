@@ -2082,3 +2082,16 @@ npm run db:seed:prod
 - ImageData 生成は `colorSpace: "srgb"` を付与、または `new ImageData(new Uint8ClampedArray(data), width, height)` を使用。
 
 ※ βの追加分（増便・LINE・ダッシュボード・アカウント・ログインフォーム）は typecheck 対象外エラーなし・lint 通過済み。
+
+### ③-確定14 ドライバー管理ページ（管理者用・ID/パスワード/CARIO紐付け）
+- 新規 `/admin/drivers`（ADMIN）: ドライバー一覧＋ログインID・パスワード設定状況・CARIO紐付け・号車/会社/エリア
+- `GET /api/admin/drivers`: 一覧（loginId=User.email・hasPassword・carioDriverId）。**パスワード値は返さない**（bcryptハッシュ）
+- `POST /api/admin/drivers/[id]/credentials`: ログインID/パスワードの設定・リセット（未作成なら新規User作成＋Driver紐付け・重複IDチェック・監査ログ）
+- UI: 「ID/PW作成」または「パスワード変更」→ 保存時にダイアログで一度だけ表示（以後は非表示・bcrypt保存）
+- Sidebarに「ドライバー管理」追加
+- 検証: ADMIN で11名取得（飯田理央=Riobaseball/PW設定済/CARIO 2d3d032b… 表示OK・CARIO取込ドライバーはID未作成）。driverセッションは403
+- typecheck（barcode.ts=γ分以外エラーなし）/ lint ✅
+
+### ⚠️ 本番反映（保留）
+- ブロッカー: ①barcode.ts型エラーでbuild失敗（γ依頼済）②未コミット27ファイルが3ターミナル混在③本番env未設定(LINE/PULLトークン)④本番DB migrate未(extra_vehicle_requests/driver_locations・γ調整)
+- 安全順: barcode修正→コミット範囲合意→Vercel env登録→本番migrate→push/deploy。β単独pushはしない

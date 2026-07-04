@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { CarioApiError } from "@/lib/cario/client";
 import { syncCarioAssignments, markRangeStale, jstDateStr } from "@/lib/cario/sync";
 
@@ -17,8 +18,12 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   // Vercel Cron の認証（CRON_SECRET 必須。未設定なら拒否＝公開させない）
   const secret = process.env.CRON_SECRET;
-  const authHeader = req.headers.get("authorization");
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+  const authHeader = req.headers.get("authorization") ?? "";
+  const expected = `Bearer ${secret ?? ""}`;
+  const a = Buffer.from(authHeader);
+  const b = Buffer.from(expected);
+  const authOk = !!secret && a.length === b.length && timingSafeEqual(a, b);
+  if (!authOk) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 

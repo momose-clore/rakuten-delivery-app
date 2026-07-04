@@ -15,6 +15,9 @@ import {
   FolderInput,
   MapPinOff,
   BarChart3,
+  PlusSquare,
+  MapPinned,
+  Users,
 } from "lucide-react";
 
 const navItems = [
@@ -28,6 +31,9 @@ const navItems = [
   { href: "/admin/location-overrides", label: "住所補正", icon: MapPinOff },
   { href: "/admin/import-accuracy", label: "取込精度", icon: BarChart3 },
   { href: "/admin/progress", label: "配送進捗", icon: TruckIcon },
+  { href: "/admin/live-map", label: "号車リアルタイム地図", icon: MapPinned },
+  { href: "/admin/drivers", label: "ドライバー管理", icon: Users },
+  { href: "/admin/extra-vehicle-requests", label: "増便申請", icon: PlusSquare },
 ];
 
 export function Sidebar() {

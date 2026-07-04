@@ -3,24 +3,19 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
 import bcryptjs from "bcryptjs";
 
-// セットアップ用トークン（テスト期間中は有効。テスト完了後にこのAPIごと削除推奨）
-const SETUP_TOKEN: string | null = "clore-setup-2026";
-
 /**
  * テスト用ドライバーアカウント＋本日のサンプル配送を作成する（冪等）。
- * 実行方法（いずれか）:
- *   - 管理者でログイン状態でこのURLを開く
- *   - ?token=<SETUP_TOKEN> を付けて開く（ログイン不要）
+ * 実行方法: 管理者でログインした状態でこのURLを開く。
  * 本番でクルー画面を試すための一時セットアップ。用済み後は削除してよい。
+ *
+ * セキュリティ: 以前あった ?token= による未ログインバイパスは削除済み
+ * （ソースにトークンが載る＝遠隔悪用可能な認証バイパスだったため）。
+ * 実行は常に ADMIN セッションを必須とする。
  */
 export async function GET(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get("token");
-  const tokenValid = SETUP_TOKEN !== null && token === SETUP_TOKEN;
-  if (!tokenValid) {
-    const session = await auth();
-    if (!session) return NextResponse.json({ error: "管理者でログインしてください" }, { status: 401 });
-    if (session.user.role !== "ADMIN") return NextResponse.json({ error: "管理者のみ実行できます" }, { status: 403 });
-  }
+  const session = await auth();
+  if (!session) return NextResponse.json({ error: "管理者でログインしてください" }, { status: 401 });
+  if (session.user.role !== "ADMIN") return NextResponse.json({ error: "管理者のみ実行できます" }, { status: 403 });
 
   // クリーンアップ：テストドライバー(TEST-001)の配送データのみ削除（実データは対象外）
   const action = req.nextUrl.searchParams.get("action");
