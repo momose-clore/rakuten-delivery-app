@@ -25,13 +25,24 @@ export type MapPin = {
 
 export type MapDepot = { name: string; lat: number; lng: number; subtitle?: string };
 
-const OSM_TILE = {
-  url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+// 標準地図：CARTO Voyager（Googleマップ風のクリーンなロードマップ・無料・キー/課金不要）
+// OSM標準より道路が明瞭で淡色・ラベルが読みやすい（「地形っぽくて見づらい」対策）。
+const STD_TILE = {
+  url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+  options: {
+    maxZoom: 20,
+    subdomains: "abcd",
+    attribution:
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  },
 };
+// サテライト：Esri World Imagery（無料・キー不要）
 const SAT_TILE = {
   url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics",
+  options: {
+    maxZoom: 19,
+    attribution: "Tiles &copy; Esri, Maxar, Earthstar Geographics",
+  },
 };
 
 /* Leaflet 最小型ファサード（自己ホスト JS をグローバル window.L から使う） */
@@ -149,7 +160,7 @@ export function LiveVehicleMap({
         );
         mapRef.current = map;
 
-        tileRef.current = L.tileLayer(OSM_TILE.url, { maxZoom: 19, attribution: OSM_TILE.attribution });
+        tileRef.current = L.tileLayer(STD_TILE.url, STD_TILE.options);
         tileRef.current.addTo(map);
 
         // 拠点マーカー
@@ -189,8 +200,8 @@ export function LiveVehicleMap({
     const map = mapRef.current;
     if (!L || !map) return;
     if (tileRef.current) tileRef.current.remove();
-    const t = sat ? SAT_TILE : OSM_TILE;
-    tileRef.current = L.tileLayer(t.url, { maxZoom: 19, attribution: t.attribution });
+    const t = sat ? SAT_TILE : STD_TILE;
+    tileRef.current = L.tileLayer(t.url, t.options);
     tileRef.current.addTo(map);
   }, [sat]);
 
