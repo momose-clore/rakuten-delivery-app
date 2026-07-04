@@ -4,16 +4,17 @@ import { useState, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CornerAdjuster } from "./CornerAdjuster";
+import { normalizeToJpegBlob } from "@/lib/image/to-jpeg";
 
 type Step = "guide" | "capture" | "adjust" | "quality" | "processing" | "done";
 type CaptureMode = "screen" | "paper";
 
 const GUIDE_MESSAGES = [
-  "配送表の四隅がすべて入るように撮影してください",
-  "斜めからではなく、できるだけ正面から撮影してください",
-  "文字が読める距離まで近づいてください",
-  "影や反射が入らない場所で撮影してください",
-  "手ブレしないように固定して撮影してください",
+  "📄 配送表だけを画面いっぱいに写す（背景を減らす）",
+  "⬆️ 用紙を縦向き・正面から真上で撮る（斜め/横向きにしない）",
+  "🔆 テカリ・反射・影が文字にかからない角度で",
+  "🔍 数字や住所がはっきり読める距離まで近づく",
+  "✋ 手ブレしないよう固定して撮る",
 ];
 
 export function MobileCameraImportPage({
@@ -48,13 +49,16 @@ export function MobileCameraImportPage({
 
   // 補正後(または原本)の画像をアップロードして品質確認へ
   async function uploadImage(image: Blob) {
-    setPreviewUrl(URL.createObjectURL(image));
     setStep("quality");
     setLoading(true);
     setError("");
 
+    // HEIC等はブラウザでJPEGに正規化してから送る（生HEICだとサーバー復号失敗→OCR崩れ）
+    const jpeg = await normalizeToJpegBlob(image);
+    setPreviewUrl(URL.createObjectURL(jpeg));
+
     const formData = new FormData();
-    formData.append("file", image, "capture.jpg");
+    formData.append("file", jpeg, "capture.jpg");
     formData.append("captureMode", captureMode);
 
     const res = await fetch("/api/admin/dispatch-import/camera/upload", { method: "POST", body: formData });
