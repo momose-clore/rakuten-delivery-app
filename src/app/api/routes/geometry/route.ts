@@ -69,6 +69,28 @@ export async function GET(req: NextRequest) {
       ? normalizeAddress(a.deliveryItem.address).buildingName
       : null,
   }));
+  const stopAddrs = withCoords.map((a) => a.deliveryItem.address ?? null);
+
+  // 自動蓄積：宛名が空の配送先は、過去に同じ住所へ配達した実績（OCR取込済の正当データ）の宛名で補完。
+  // 貨物一覧を読み取るほど履歴が増え、地図の宛名が自動で充実する。※外部データは一切使わない。
+  const missingAddrs = [
+    ...new Set(stopAddrs.filter((addr, i): addr is string => !!addr && !stops[i].name)),
+  ];
+  if (missingAddrs.length > 0) {
+    const history = await prisma.deliveryItem.findMany({
+      where: { address: { in: missingAddrs }, customerName: { not: null } },
+      select: { address: true, customerName: true },
+      orderBy: { createdAt: "desc" },
+    });
+    const byAddr = new Map<string, string>();
+    for (const h of history) {
+      if (h.address && h.customerName && !byAddr.has(h.address)) byAddr.set(h.address, h.customerName);
+    }
+    stops.forEach((s, i) => {
+      const addr = stopAddrs[i];
+      if (!s.name && addr && byAddr.has(addr)) s.name = byAddr.get(addr) ?? null;
+    });
+  }
 
   const origin: GeoPoint = { id: "warehouse", lat: WAREHOUSE.lat, lng: WAREHOUSE.lng };
   const path = await getRouteGeometry(origin, orderedPoints, returnToWarehouse);
