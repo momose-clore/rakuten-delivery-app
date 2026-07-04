@@ -1,10 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/prisma";
-import { geocodeAddress } from "@/lib/maps/geocode";
+import { geocodeAddress, type GeocodeResult } from "@/lib/maps/geocode";
 import { shouldBlockCoordinateOverwrite } from "@/lib/prediction/overwrite-guard";
-import { buildGeocodeCoordinateMeta } from "@/lib/prediction/metadata";
+import { buildGeocodeCoordinateMeta, buildApprovedOverrideCoordinateMeta } from "@/lib/prediction/metadata";
+import { findApprovedOverride } from "@/lib/address/location-override-matcher";
 import { recordPredictionAudit, PREDICTION_AUDIT_ACTIONS } from "@/lib/audit/audit-log";
+import type { ValueConfidence } from "@/types/prediction";
+
+/**
+ * D③: ジオコーディング結果の精度から信頼度を判定する。
+ * 低精度（GSIフォールバック・APPROXIMATE等）は LOW にして「⚠要確認ピン」に回す。
+ */
+function confidenceFromGeocode(result: GeocodeResult): ValueConfidence {
+  if (result.source === "gsi") return "LOW"; // 国土地理院＝町丁目レベル
+  switch (result.locationType) {
+    case "ROOFTOP":
+      return "HIGH";
+    case "RANGE_INTERPOLATED":
+      return "MEDIUM";
+    default: // GEOMETRIC_CENTER / APPROXIMATE / null
+      return "LOW";
+  }
+}
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -42,6 +60,7 @@ export async function POST(req: NextRequest) {
   let successCount = 0;
   let failCount = 0;
   let skippedCount = 0;
+  let reusedCount = 0; // D④: 承認済みピン再利用でGeocodeせず確定した件数
 
   for (const item of items) {
     if (!item.address) continue;
@@ -63,6 +82,24 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // D④: 同一住所の承認済みピン(override)があれば再利用（Google呼び出し節約・ADMIN_APPROVED確定座標）
+    const override = await findApprovedOverride(item.address);
+    if (override && override.lat != null && override.lng != null) {
+      const ometa = buildApprovedOverrideCoordinateMeta();
+      await prisma.deliveryItem.update({
+        where: { id: item.id },
+        data: {
+          lat: override.lat,
+          lng: override.lng,
+          coordinateSource:     ometa.coordinateSource,
+          coordinateStatus:     ometa.coordinateStatus,
+          coordinateConfidence: ometa.coordinateConfidence,
+        },
+      });
+      reusedCount++;
+      continue;
+    }
+
     const result = await geocodeAddress(item.address);
 
     if (result) {
@@ -74,7 +111,8 @@ export async function POST(req: NextRequest) {
           lng: result.lng,
           coordinateSource:     meta.coordinateSource,
           coordinateStatus:     meta.coordinateStatus,
-          coordinateConfidence: meta.coordinateConfidence,
+          // D③: 精度に応じた信頼度（低精度は LOW→UIで⚠要確認）
+          coordinateConfidence: confidenceFromGeocode(result),
         },
       });
       successCount++;
@@ -95,6 +133,7 @@ export async function POST(req: NextRequest) {
       targetId: date,
       afterData: {
         successCount,
+        reusedCount,
         failCount,
         skippedCount,
         total: items.length,
@@ -107,6 +146,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     success: true,
     successCount,
+    reusedCount,
     failCount,
     skippedCount,
     total: items.length,
