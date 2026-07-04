@@ -92,6 +92,26 @@ function rotateWords(words: OcrWord[], W: number, H: number, deg: 90 | 180 | 270
   });
 }
 
+/** 数量4列の中心x座標を列ヘッダから検出（常温/クーラー/ケース/箱数計）。無ければ実測比の既定値。 */
+function detectQuantityColumnCenters(words: OcrWord[], imageWidth: number): number[] {
+  const fixed = [0.67, 0.78, 0.88, 0.97].map((f) => imageWidth * f);
+  const centerX = (re: RegExp): number | null => {
+    const xs = words
+      .filter((w) => re.test(w.text) && w.left > imageWidth * 0.5)
+      .map((w) => w.left + w.width / 2)
+      .sort((a, b) => a - b);
+    return xs.length ? xs[Math.floor(xs.length / 2)] : null;
+  };
+  const c0 = centerX(/常温/);
+  const c1 = centerX(/クーラー|クーラ/);
+  const c2 = centerX(/ケース/);
+  const c3 = centerX(/箱数|荷数|箱計|数計/);
+  if (c0 != null && c1 != null && c2 != null && c3 != null && c0 < c1 && c1 < c2 && c2 < c3) {
+    return [c0, c1, c2, c3];
+  }
+  return fixed;
+}
+
 /**
  * OCR単語から L1M 明細ブロックを抽出。
  * カメラ写真は横向き/上下逆で撮られることがあり、座標ベース解析が破綻するため、
@@ -136,8 +156,9 @@ function parseBlocksAtOrientation(
   // 数量列は実測で 常温≈67% / クーラー≈78% / ケース≈88% / 箱計≈97%。お客様情報列との
   // 境界は常温列の手前(≈0.63)。0.76だと常温列を取りこぼすため 0.63 を既定にする。
   const quantityBoundary = imageWidth * numEnv("OCR_L1M_QTY_BOUNDARY", 0.63);
-  // 各数量列の中心x（imageWidth比）。数値はこの最寄り列に割り当てる。
-  const QTY_COL_CENTERS = [0.67, 0.78, 0.88, 0.97].map((f) => imageWidth * f);
+  // 各数量列の中心x。列ヘッダ(常温/クーラー/ケース/箱数計)の実位置を検出して使う
+  // （シートやスキャンで列位置がずれても追従。検出できなければ実測比の既定値）。
+  const QTY_COL_CENTERS = detectQuantityColumnCenters(sorted, imageWidth);
 
   // 左カラム語を「行」にクラスタリング（top近接）し、配車Noを含む行をブロック開始として検出
   const leftIdx: number[] = [];
