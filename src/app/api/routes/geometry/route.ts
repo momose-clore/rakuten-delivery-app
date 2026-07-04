@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { WAREHOUSE } from "@/lib/maps/warehouse";
 import { getRouteGeometry } from "@/lib/routes/ors";
 import type { GeoPoint } from "@/lib/routes/sortByNearest";
+import { normalizeAddress } from "@/lib/address/address-normalizer";
 
 /**
  * A③: 指定ドライバーの配送ルート（route_order 順）を実道路で結んだ経路ジオメトリを返す。
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
       },
     },
     orderBy: { routeOrder: "asc" },
-    include: { deliveryItem: { select: { lat: true, lng: true, customerName: true } } },
+    include: { deliveryItem: { select: { lat: true, lng: true, customerName: true, address: true } } },
   });
 
   const withCoords = assignments.filter(
@@ -63,6 +64,10 @@ export async function GET(req: NextRequest) {
     lat: a.deliveryItem.lat as number,
     lng: a.deliveryItem.lng as number,
     name: a.deliveryItem.customerName ?? null,
+    // 建物名（ビル/アパート/マンション/商業施設）は配送先住所から抽出（OCRの正当データ）
+    building: a.deliveryItem.address
+      ? normalizeAddress(a.deliveryItem.address).buildingName
+      : null,
   }));
 
   const origin: GeoPoint = { id: "warehouse", lat: WAREHOUSE.lat, lng: WAREHOUSE.lng };

@@ -26,7 +26,7 @@ export type MapPin = {
 export type MapDepot = { name: string; lat: number; lng: number; subtitle?: string };
 
 /** 配送先の停止点（配送順＋宛名）。地図に番号付きピンで表示する。 */
-export type RouteStop = { seq: number; lat: number; lng: number; name?: string | null };
+export type RouteStop = { seq: number; lat: number; lng: number; name?: string | null; building?: string | null };
 
 // 標準地図：OpenStreetMap Japan（日本語ラベル・Googleマップ風の色付きロードマップ・無料・キー/課金不要）
 // 地名/駅名/区名が日本語表示。CARTO Voyager は英語ラベルだったため日本語タイルに変更。
@@ -315,9 +315,12 @@ export function LiveVehicleMap({
         iconAnchor: [11, 11],
       });
       const m = L.marker([s.lat, s.lng], { icon }).addTo(map);
-      // 宛名は個人情報。表示のみ（ログには出さない）。HTMLエスケープして注入。
+      // 宛名・建物名は個人情報。表示のみ（ログには出さない）。HTMLエスケープして注入。
       const nameHtml = s.name ? escapeHtml(s.name) : "（宛名なし）";
-      m.bindPopup(`<b>${s.seq}. ${nameHtml}</b>`);
+      const buildingHtml = s.building
+        ? `<br/><span style="color:#555;">🏢 ${escapeHtml(s.building)}</span>`
+        : "";
+      m.bindPopup(`<b>${s.seq}. ${nameHtml}</b>${buildingHtml}`);
       stopMarkersRef.current.push(m);
     }
   }, [routeStops, ready]);
