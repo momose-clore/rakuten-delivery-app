@@ -113,6 +113,17 @@ export function MobileCameraImportPage({
           ))}
         </div>
 
+        {captureMode === "paper" && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-1">
+            <p className="text-sm font-bold text-amber-900">📑 精度重視なら「書類スキャン」推奨</p>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              紙の貨物一覧表は文字が細かく、通常のカメラだと読み間違いが起きやすいです。
+              <b>iPhoneの「ファイル」or「メモ」アプリの“書類をスキャン”</b>（自動で真っ直ぐ＋くっきり補正）や
+              CamScannerで撮り、その<b>PDF/画像を下の「ファイルを選択」から取り込む</b>と精度が大きく上がります。
+            </p>
+          </div>
+        )}
+
         <div className="bg-blue-50 rounded-xl p-4 space-y-2">
           <p className="text-sm font-semibold text-blue-800">撮影ガイド</p>
           {GUIDE_MESSAGES.map((msg, i) => (
