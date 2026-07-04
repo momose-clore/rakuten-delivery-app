@@ -17,7 +17,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import Image from "next/image";
-import { Camera, FileText, Truck, Navigation, Check, Users, List, Map as MapIcon, PackageCheck, ChevronRight, ShieldCheck, Clock, Flag, Trash2 } from "lucide-react";
+import { Camera, FileText, Truck, Navigation, Check, Users, List, Map as MapIcon, PackageCheck, ChevronRight, ShieldCheck, Clock, Flag, Trash2, Pencil } from "lucide-react";
 
 const NAVY = "#26324F";
 const NAVY_DARK = "#1b2438";
@@ -141,6 +141,20 @@ export function TodayClient() {
     }
   };
 
+  const editAddress = async (deliveryItemId: string, address: string) => {
+    const res = await fetch(`/api/driver/delivery-items/${deliveryItemId}/address`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ address }),
+    });
+    if (res.ok) {
+      setItems((prev) => prev.map((i) => (i.deliveryItemId === deliveryItemId ? { ...i, address, coordinateStatus: "MANUAL_FIXED", lat: null, lng: null } : i)));
+      setToast("住所を修正しました");
+    } else {
+      const b = await res.json().catch(() => ({}));
+      setToast(b.error ?? "住所修正に失敗しました");
+    }
+  };
+
   const submitWarehouse = async (time: string) => {
     const res = await fetch("/api/driver/warehouse-arrival", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ time }),
@@ -185,7 +199,7 @@ export function TodayClient() {
           onDeliver={() => setView("delivery")} onSubmitWarehouse={submitWarehouse} onSubmitFinish={submitFinish} onCamera={() => router.push("/driver/camera")} onPdf={importPdf} />
       )}
       {view === "delivery" && (
-        <Delivery items={items} mapsUrls={mapsUrls} onComplete={complete} onToggleNoMis={toggleNoMis} onDelete={remove} onHome={() => setView("home")} onFlash={setToast} onCamera={() => router.push("/driver/camera")} onFollow={() => setView("follow")} />
+        <Delivery items={items} mapsUrls={mapsUrls} onComplete={complete} onToggleNoMis={toggleNoMis} onDelete={remove} onEditAddress={editAddress} onHome={() => setView("home")} onFlash={setToast} onCamera={() => router.push("/driver/camera")} onFollow={() => setView("follow")} />
       )}
       {view === "follow" && (
         <Follow onBack={() => { setView("delivery"); void fetchToday(); }} onFlash={setToast} />
@@ -293,7 +307,7 @@ function Home({ driver, allDone, warehouseSaved, finishedSaved, onDeliver, onSub
   );
 }
 
-function Delivery({ items, mapsUrls, onComplete, onToggleNoMis, onDelete, onHome, onFlash, onCamera, onFollow }: { items: ApiItem[]; mapsUrls: string[]; onComplete: (id: string) => void; onToggleNoMis: (id: string, value: boolean) => void; onDelete: (id: string) => Promise<void>; onHome: () => void; onFlash: (m: string) => void; onCamera: () => void; onFollow: () => void }) {
+function Delivery({ items, mapsUrls, onComplete, onToggleNoMis, onDelete, onEditAddress, onHome, onFlash, onCamera, onFollow }: { items: ApiItem[]; mapsUrls: string[]; onComplete: (id: string) => void; onToggleNoMis: (id: string, value: boolean) => void; onDelete: (id: string) => Promise<void>; onEditAddress: (id: string, address: string) => Promise<void>; onHome: () => void; onFlash: (m: string) => void; onCamera: () => void; onFollow: () => void }) {
   const defaultWave = items.find((i) => !isDone(i.deliveryStatus))?.waveNo ?? items[0]?.waveNo ?? WAVES[0];
   const [selectedWave, setSelectedWave] = useState<string>(defaultWave ?? WAVES[0]);
   const scoped = items.filter((i) => (i.waveNo ?? WAVES[0]) === selectedWave);
@@ -342,7 +356,7 @@ function Delivery({ items, mapsUrls, onComplete, onToggleNoMis, onDelete, onHome
           <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-400">このウェーブの配送はありません</div>
         ) : scoped.map((i) => (
           <DeliveryCard key={i.deliveryItemId} item={i} current={next != null && i.deliveryItemId === next.deliveryItemId}
-            onComplete={() => onComplete(i.deliveryItemId)} onToggleNoMis={(v) => onToggleNoMis(i.deliveryItemId, v)} onDelete={() => onDelete(i.deliveryItemId)} />
+            onComplete={() => onComplete(i.deliveryItemId)} onToggleNoMis={(v) => onToggleNoMis(i.deliveryItemId, v)} onDelete={() => onDelete(i.deliveryItemId)} onEditAddress={(a) => onEditAddress(i.deliveryItemId, a)} />
         ))}
 
         <button onClick={onFollow}
@@ -365,13 +379,16 @@ function Delivery({ items, mapsUrls, onComplete, onToggleNoMis, onDelete, onHome
   );
 }
 
-function DeliveryCard({ item, current, onComplete, onToggleNoMis, onDelete }: { item: ApiItem; current?: boolean; onComplete: () => void; onToggleNoMis: (value: boolean) => void; onDelete?: () => Promise<void> }) {
+function DeliveryCard({ item, current, onComplete, onToggleNoMis, onDelete, onEditAddress }: { item: ApiItem; current?: boolean; onComplete: () => void; onToggleNoMis: (value: boolean) => void; onDelete?: () => Promise<void>; onEditAddress?: (address: string) => Promise<void> }) {
   const conf = confOf(item.coordinateBadge);
   const done = isDone(item.deliveryStatus);
   const pill = pillOf(item.deliveryStatus);
   const [noMis, setNoMis] = useState(!!item.noMisdelivery);
   const [confirmDel, setConfirmDel] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editingAddr, setEditingAddr] = useState(false);
+  const [addrDraft, setAddrDraft] = useState(item.address ?? "");
+  const [savingAddr, setSavingAddr] = useState(false);
   return (
     <div className={`rounded-2xl shadow-lg overflow-hidden bg-white ${done ? "opacity-70" : ""} ${current ? "ring-2 ring-blue-600" : "border border-gray-100"}`}>
       {item.follow && (
@@ -406,7 +423,36 @@ function DeliveryCard({ item, current, onComplete, onToggleNoMis, onDelete }: { 
       <div className="p-4 space-y-3">
         <div>
           {conf && <span className="inline-block text-white text-[11px] font-bold px-2 py-0.5 rounded-md mb-1" style={{ background: conf.bg }}>{conf.label}</span>}
-          <p className="text-lg font-bold text-gray-900 leading-snug">{item.address ?? "住所未登録"}</p>
+          {editingAddr && onEditAddress ? (
+            <div className="space-y-2">
+              <textarea
+                value={addrDraft}
+                onChange={(e) => setAddrDraft(e.target.value)}
+                rows={2}
+                className="w-full text-base font-bold text-gray-900 border-2 border-blue-400 rounded-lg px-3 py-2 leading-snug focus:outline-none"
+                placeholder="正しい住所を入力"
+              />
+              <div className="flex gap-2">
+                <button onClick={() => { setAddrDraft(item.address ?? ""); setEditingAddr(false); }} disabled={savingAddr}
+                  className="flex-1 py-2 rounded-lg border border-gray-300 text-gray-600 text-sm font-medium">やめる</button>
+                <button onClick={async () => { setSavingAddr(true); await onEditAddress(addrDraft); setSavingAddr(false); setEditingAddr(false); }}
+                  disabled={savingAddr || !addrDraft.trim()}
+                  className="flex-1 py-2 rounded-lg text-white text-sm font-bold disabled:opacity-50" style={{ background: NAVY }}>
+                  {savingAddr ? "保存中..." : "保存"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-lg font-bold text-gray-900 leading-snug flex-1">{item.address ?? "住所未登録"}</p>
+              {onEditAddress && !done && (
+                <button onClick={() => { setAddrDraft(item.address ?? ""); setEditingAddr(true); }}
+                  aria-label="住所を修正" className="shrink-0 mt-0.5 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 active:scale-95 transition">
+                  <Pencil size={16} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {item.cautionMemo && <p className="text-sm text-white font-medium px-2.5 py-1.5 rounded-lg" style={{ background: "#B91C1C" }}>⚠️ {item.cautionMemo}</p>}
         {item.entranceMemo && <p className="text-sm px-2.5 py-1.5 rounded-lg" style={{ background: `${NAVY}0d`, color: NAVY }}>🚪 入口: {item.entranceMemo}</p>}
