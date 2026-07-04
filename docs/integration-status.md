@@ -297,6 +297,24 @@ riku の Downloads の実ファイルを無料デコーダ(zxing)で実測:
 
 **γが自走で担える支援**：①遅配の集計/ドライバー向けtiming API、④KPI集計API、⑨割当への遅配締切データ供給。UI描画・配車ロジック本体はβ、通知はLINE担当、画像処理はOCR担当。**各担当は上表の自分の行から着手を**。
 
+## 🧰 機能依頼：増便理由の Gemini バリエーション生成（riku指示 2026-07-04）＝増便担当＋OCR(Gemini)＋γ
+
+riku 要望：増便申請フォームの「増便理由」を**Geminiで毎回バリエーション豊かに生成**（プリセットも混ぜつつ、毎回違うパターン）。将来は配達進捗/遅配などの**実データから原因を拾って理由に反映**（＝下記【案・保留】）。
+
+**現状**：`src/lib/extra-vehicle/reason-templates.ts` の `waveReasonVariants(wave, areas)` が固定バリアント生成、`/api/extra-vehicle-requests/wave-areas` が市区町村(PII配慮)を供給、フォームはプリセットボタン＋編集可textarea。Geminiは `src/lib/ocr/gemini.ts` に `extractL1MWithGemini`/`isGeminiConfigured` あり（理由生成には未使用）。
+
+**依頼（今すぐ・増便担当＋OCR）**：
+1. **Gemini理由生成を追加**：`waveReasonVariants` にGemini生成分をミックス（プリセット＋AI・**毎回違う文面**・同種も混ぜる）。`src/lib/ocr/gemini.ts` に `generateExtraVehicleReasons(ctx)` を足す or 増便側から呼ぶ。
+2. **文脈**：wave / areas(市区町村) / depot。**GEMINI_API_KEY 前提**（未設定時はプリセットにフォールバック＝壊れない）。
+3. UIは「別パターン再生成」ボタンで引き直せると良い（毎回変える要望に合致）。
+
+**γ提供（文脈強化・任意で今使える）**：`GET /api/delivery-timing/summary?date=` / `GET /api/admin/kpi/summary?date=` を Gemini に渡せば、**その日の遅配・進捗・未配・wave別状況に即した理由**が出せる。
+
+**📌【案・保留】データ駆動の増便理由自動生成**（riku「案として置いといて」）：
+配達進捗が取れ次第、**遅配・進捗・未配・号車遅れ等の実データから「増便が必要そうな原因」をGeminiに逐一拾わせ、理由に自動反映**。→ γが「**原因シグナル集約API**」（date/wave/depotの遅配・進捗・未配・締切超過等を返す）を用意 → Geminiが理由文化。**着手時期はriku判断（今は保留）**。γは要請あれば即コンテキストAPIを実装。
+
+**※Gemini前提**：CLAUDE.md「Gemini禁止」方針と矛盾。riku が Gemini採用を指示中（無料枠）＝**方針更新前提**で進める（別途 riku が方針確定→CLAUDE.md更新を推奨）。
+
 ## 運用上の注意（共有事項）
 
 - **共有作業ツリー**のため `git commit -am` / `git add -A` は他ターミナルの中途変更・削除を巻き込む。**パス明示コミット**を徹底（過去に実際に巻き込み事故あり）。
