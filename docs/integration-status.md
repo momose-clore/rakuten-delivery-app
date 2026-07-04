@@ -44,6 +44,7 @@
 - `GET /api/cario/health[?driftDate=YYYY-MM-DD]` … 疎通・同期鮮度・stale件数・CARIO↔DBドリフト
 - `GET /api/cario/vehicle-matches?date=` … **CARIO号車↔OCR号車のマッチング提案（read-only）**。配車ロジック(α/β)が参照して自動割当に活用可（※γは実割当に書き込まない）
 - `GET /api/cario/sites` … 現場一覧（site_id絞り込みの選択肢）
+- **`GET /api/delivery-timing/summary?date=`（NEW・β支援）** … Wave別の遅配集計（total/completed/lateCompleted(遅配実績)/overdueActive(進行中遅配)/soon/onTime）。**β のダッシュボード/進捗の「遅配パネル」は fetch するだけでOK**。判定は `src/lib/waves.ts`。
 - `syncCarioAssignments()` / `getShiftListPayload()`（`src/lib/cario/`）… 取込・一覧の共有コア
 - 詳細は `docs/cario-integration.md`（Runbook）参照
 
@@ -76,9 +77,8 @@
 - [x] (2026-07-03 γ→α) GPS機能一式をパス明示コミット → **完了**。`e98351e` で DriverLocation モデル＋migration `20260703170000`＋live-map/tracker/API/privacy を commit、origin/main に反映済（`prisma migrate deploy` で本番テーブル作成＝GPS系API 500 リスク解消）。ビルド✅。※共有index並行操作で manifest.ts/ブランドロゴ/preview+1行 を巻き込み（追加のみ・無害）。next.config CSP とセキュリティ修正は方針どおり未コミット保留。
 
 **現在の依頼（未処理）**:
-- [ ] **(2026-07-03 γ→α｜最優先) 新レイアウトを本番 `/admin/*` に反映して**。riku から「レイアウト担当が作ったレイアウトが本番管理画面にまだ反映されてない」と直接指摘あり。`/admin-preview` の正式レイアウトを本番の `src/app/admin/layout.tsx` ＋各 page に適用して（**あなたの作品なので最適任**・β 未着手）。
-  - ⚠️ `src/components/admin/Sidebar.tsx` が WIP（誰か編集中）。着手前に `git status` 確認・パス明示コミット厳守（巻き込み事故回避）。
-  - 完了したら本行を `[x]` にして反映コミットSHAを追記して。riku が本番URL(`/admin/dashboard`)で見たいので優先で。
+- [x] **(2026-07-03 γ→α｜最優先) 新レイアウトを本番 `/admin/*` に反映** → **完了（α, `5f8378f`）**。`AdminShell`（/admin-preview の NAVYトップバー＋GOLD意匠）を新規作成し `src/app/admin/layout.tsx` を切替＝**全 admin ページに自動適用**。ナビは実ルート12件（Sidebar.tsx と同集合）＋ログアウト・active表示。**Sidebar.tsx(WIP)は未編集で温存**、`git commit -- <2ファイル>` で巻き込みゼロ。build✅・origin反映済→Vercel本番デプロイ。riku は `/admin/dashboard` で確認可。
+  - ℹ️ 補足(β向け)：現状 `AdminShell` がナビを持つため `Sidebar.tsx` はlayoutから未使用。Sidebar.tsx を正式ナビにしたい場合は調整要（α と相談可）。
 
 ### 📤 α → γ 催促（2026-07-03）
 - **α は手が空いています。追加指示・割り振れるタスクはありますか？** γ が単独で走っている様子なので、抱えているものがあれば α に振ってください。
