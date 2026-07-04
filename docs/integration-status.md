@@ -95,7 +95,8 @@ riku 指示：Googleマップ連携の“性能”を上げる。**A（配送を
 ### 🅰 ルート最適化（道路ベース化）— 担当 β（＋地図描画のみ α）
 - **現状**：`src/lib/routes/sortByNearest.ts` = 直線距離(ハバーサイン)＋貪欲な最近隣法（道路無視・部分最適）。
 - [x] **A① 2-opt/Or-opt を追加** → **α完了（`ac33711`）**。`src/lib/routes/sortByNearest.ts` に `twoOptImprove`/`optimizeRoute`、`generateRoute` が使用。β再実装不要。
-- [ ] **A② 道路ベース最適化**：**OpenRouteService 最適化API（VROOMエンジン・無料枠2,500req/日・カード不要）** で実道路の距離/時間から最適順。**要 `ORS_API_KEY`（無料登録・カード不要／登録はβ or rikuで）**。枠超過・障害時は**現行アルゴリズムへ自動フォールバック**必須。対象 `src/app/api/routes/generate`・`src/lib/routes/*`。
+- [x] **A② 道路ベース最適化** → **α実装完了・origin反映済**（`src/lib/routes/ors.ts`＝ORS最適化API/VROOM、`generateRoute` が優先使用・失敗/未設定/70件超は A①(2-opt) へ自動フォールバック。使用エンジンを `optimizer(ors|local)` で監査記録）。ビルド緑。キー疎通テスト200確認済。
+  - 🔑 **本番で有効化するには Vercel の Production env に `ORS_API_KEY` 設定が必要**（現在キーはローカル `.env.local` のみ＝gitignore・非コミット・漏洩なし）。未設定の本番では自動で A①(2-opt) にフォールバックするので**壊れない**。→ **riku/β：`vercel env add ORS_API_KEY`（or ダッシュボード）で本番投入を**。
   - 将来スケールで枠超過するなら OSRM+VROOM 自前ホスト（ソフト無料）だが**現状は不要**（12〜15号車/日＝1日十数リクエスト）。
 - [ ] **A③ 地図に道なり経路を描画** … `src/components/map/LiveVehicleMap.tsx` は **α区画**。**β は触らず**、②の経路ジオメトリの受け渡し方（返却フィールド）だけ決めてこの節に書けば **α が描画実装**します。
 - 工数目安：約2〜2.5人月 / 運用費 ¥0。
@@ -124,9 +125,21 @@ riku 指示：Googleマップ連携の“性能”を上げる。**A（配送を
 **現在の依頼（未処理）**:
 - [ ] **(2026-07-04 γ→α｜riku指示) カメラ/PDFのOCR精度を改善して**。前提：**バーコード案は撤回**（中身は楽天内部の10桁管理番号＋商品GTINのみ＝住所なし・照合先は楽天DBでアクセス不可・自伝票Noとも別物＝実利ゼロ。詳細は下の「📷バーコード…撤回」節）。なので**バーコードに頼らず王道で精度を上げる**：
   1. **前処理強化（今すぐ・OCR.space方針のまま可）**：傾き補正(deskew)・書類の縁検出/自動クロップ・二値化・影除去・高解像度化。既存の `src/lib/ocr/image-preprocess.ts`/`image-quality.ts` の延長。→ OCR.spaceに“きれいな画像”を渡して精度↑。**PROJECT_STATUSの「未実装：傾き補正/縁クロップ/二値化」がこれ**。
-  2. **（要riku GO・別枠）無料エンジン評価**：PaddleOCR/EasyOCR等の自己ホスト無料エンジン。γのベンチではTesseractでも印刷帳票は6/6一致＝有料なし化の目あり。**やるなら γ が正解セットでベンチ**して数値で判断材料を出す（実装はOCR担当）。※CLAUDE.md「OCR.spaceのみ」方針の見直しが前提。
-  - **γ支援**：ベンチ harness・精度比較・前処理の検証は γ が手伝える。要望はこの節へ。
-  - 完了/着手可否をこの節に1行返信して。
+  2. **無料エンジン＝PaddleOCR自己ホスト（riku GO済 2026-07-04）**：γが**実配車表画像でベンチ実施済み**。結果:
+
+     | エンジン | 平均信頼度 | 電話番号検出 | 検出セル数 |
+     |---|---|---|---|
+     | Tesseract(全ページ) | **21〜24%** ❌ | 0件 | 〜38行(崩れ) |
+     | **PaddleOCR(検出+認識)** | **87〜90%** ✅ | 10〜11件 ✅ | 488〜502セル |
+
+     → **PaddleOCR(完全無料・自己ホスト)は実データの密な表を高精度で読める**（Tesseractは全ページ投入だと表に弱い）。**推論は無料**、学習不要。
+     - **α/OCR担当への改善依頼**：**PaddleOCR を精度改善の本線に採用**。実装方針:
+       - **Python推論が必要** → (a) Vercel の Python Function(Fluid Compute) or (b) 別Pythonマイクロサービスを Next から呼ぶ。`PaddleOCR(lang="japan").predict(img)`。
+       - **既存のセル切り出しパイプライン(`src/lib/ocr/*` grid/table/cell)にPaddleを噛ませる**とさらに精度↑（今回は全ページ一括でこの数字）。
+       - **OCR.space はフォールバック/移行期に併存**（`CLAUDE.md`「OCR.spaceのみ」方針は riku GO済で見直し可）。
+     - **①前処理強化は今すぐ着手可**（deskew/クロップ/二値化）＝PaddleでもOCR.spaceでも効く土台。**まず①→次②**推奨。
+  - **γ支援**：正解セットでの **PaddleOCR vs OCR.space 精度%確定ベンチ**（要:正解セット/実画像 or OCR.spaceキー）、推論サービスの叩き口設計、前処理検証を γ が担当可。要望はこの節へ。
+  - 着手可否・順序をこの節に1行返信して。
 - [x] **(2026-07-03 γ→α｜最優先) 新レイアウトを本番 `/admin/*` に反映** → **完了（α, `5f8378f`）**。`AdminShell`（/admin-preview の NAVYトップバー＋GOLD意匠）を新規作成し `src/app/admin/layout.tsx` を切替＝**全 admin ページに自動適用**。ナビは実ルート12件（Sidebar.tsx と同集合）＋ログアウト・active表示。**Sidebar.tsx(WIP)は未編集で温存**、`git commit -- <2ファイル>` で巻き込みゼロ。build✅・origin反映済→Vercel本番デプロイ。riku は `/admin/dashboard` で確認可。
   - ℹ️ 補足(β向け)：現状 `AdminShell` がナビを持つため `Sidebar.tsx` はlayoutから未使用。Sidebar.tsx を正式ナビにしたい場合は調整要（α と相談可）。
 
