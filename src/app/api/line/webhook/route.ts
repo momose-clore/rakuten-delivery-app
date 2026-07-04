@@ -73,8 +73,9 @@ export async function POST(req: NextRequest) {
     if (!picked) continue;
     captured.push(`${picked.kind}: ${picked.id}`);
 
-    // 返信可能なイベントなら、そのトークルームのIDを返信する
-    if (token && ev.replyToken) {
+    // グループIDの自動返信は既定OFF（本番グループでのスパム防止）。
+    // 新しいグループのID取得が必要な時だけ env LINE_WEBHOOK_ECHO_GROUP_ID=1 で一時的に有効化する。
+    if (token && ev.replyToken && process.env.LINE_WEBHOOK_ECHO_GROUP_ID === "1") {
       const text =
         `このトークルームのID\n${picked.kind}: ${picked.id}\n\n` +
         `増便テスト送信を使うには、この値を LINE_TEST_GROUP_ID に設定してください。`;
