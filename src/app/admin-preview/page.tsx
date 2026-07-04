@@ -46,7 +46,7 @@ const AMBER = "#d97706"; // 遅延・要注意
 const RED = "#dc2626"; // 未出発・危険
 
 // 美女木 積み込み拠点（src/lib/maps/warehouse.ts と同値）
-const DEPOT = { name: "美女木 積み込み拠点", lat: 35.8326, lng: 139.6564, subtitle: "埼玉県戸田市美女木" };
+const DEPOT = { name: "美女木 積み込み拠点", lat: 35.824005, lng: 139.636612, subtitle: "埼玉県戸田市美女木7-18-6" };
 
 // 号車の現在地（プレビュー用の仮座標。本番は /admin/live-map が GPS 実データを表示）
 const PINS: VehiclePin[] = [
