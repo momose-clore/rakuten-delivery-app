@@ -25,15 +25,14 @@ export type MapPin = {
 
 export type MapDepot = { name: string; lat: number; lng: number; subtitle?: string };
 
-// 標準地図：CARTO Voyager（Googleマップ風のクリーンなロードマップ・無料・キー/課金不要）
-// OSM標準より道路が明瞭で淡色・ラベルが読みやすい（「地形っぽくて見づらい」対策）。
+// 標準地図：OpenStreetMap Japan（日本語ラベル・Googleマップ風の色付きロードマップ・無料・キー/課金不要）
+// 地名/駅名/区名が日本語表示。CARTO Voyager は英語ラベルだったため日本語タイルに変更。
 const STD_TILE = {
-  url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png",
+  url: "https://tile.openstreetmap.jp/{z}/{x}/{y}.png",
   options: {
-    maxZoom: 20,
-    subdomains: "abcd",
+    maxZoom: 18,
     attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors｜地図: <a href="https://openstreetmap.jp/">OSM Japan</a>',
   },
 };
 // サテライト：Esri World Imagery（無料・キー不要）
