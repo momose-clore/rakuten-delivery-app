@@ -155,31 +155,58 @@ function parseBlocksAtOrientation(
     ? parseInt(correctDigitMisreads(toHalfWidth(meta.vehicleNo)).replace(/[^\d]/g, ""), 10)
     : NaN;
 
-  // 配車No を含む行を「ブロック開始」として検出（分割・ハイフン欠落は reconstructDispatchKey で復元）
-  const blockStarts: number[] = [];
-  const blockKeys: string[] = [];
+  // 配車Noクラスタ由来のアンカー（従来・正立/PDFで確実）
+  const configTops: number[] = [];
+  const configKeys: string[] = [];
   for (const cl of clusters) {
     const key = reconstructDispatchKey(cl.map((i) => sorted[i]));
     if (!key) continue;
-    // 号車が判っている場合は第1部一致で絞り込み（日付誤検出などを除外）
     if (Number.isFinite(expectedVehicle)) {
       const head = parseInt(key.split("-")[0].replace(/[^\d]/g, ""), 10);
       if (head !== expectedVehicle) continue;
     }
-    blockStarts.push(cl[0]);
-    blockKeys.push(key);
+    configTops.push(sorted[cl[0]].top);
+    configKeys.push(key);
   }
 
-  if (blockStarts.length === 0) return [];
+  // 伝票No(20XX 長桁)由来のアンカー。配車Noは小さく分割されやすいがこちらは確実に読める。
+  // L1Mの枠組みは固定で上から連番のため、配車Noは「号車＋順番」で補完できる。
+  // 伝票Noアンカーが配車Noクラスタ以上に取れたら、そちら（＝正しい向き/歪みに強い）を採用。
+  const invTopsRaw = sorted
+    .filter((w) => /^20\d{9,14}$/.test(correctDigitMisreads(toHalfWidth(w.text)).replace(/[^\d]/g, "")))
+    .map((w) => w.top)
+    .sort((a, b) => a - b);
+  const invTops: number[] = [];
+  for (const t of invTopsRaw) {
+    if (!invTops.length || t - invTops[invTops.length - 1] > rowTol * 2) invTops.push(t);
+  }
 
-  const keyTops = blockStarts.map((idx) => sorted[idx].top);
+  let keyTops: number[];
+  let blockKeys: (string | null)[];
+  if (invTops.length >= 2 && invTops.length > configTops.length) {
+    keyTops = invTops;
+    blockKeys = invTops.map((t, idx) => {
+      // 同一行帯の左カラム語から配車Noを復元。ダメなら号車＋順番で補完。
+      const rowWords = sorted.filter((w) => w.left < leftBoundary && Math.abs(w.top - t) <= rowTol * 1.8);
+      let key = reconstructDispatchKey(rowWords);
+      if (key && Number.isFinite(expectedVehicle) && parseInt(key.split("-")[0].replace(/[^\d]/g, ""), 10) !== expectedVehicle) key = null;
+      if (!key && Number.isFinite(expectedVehicle)) key = `${expectedVehicle}-${idx + 1}`;
+      return key;
+    });
+  } else {
+    keyTops = configTops;
+    blockKeys = configKeys;
+  }
+
+  if (keyTops.length === 0) return [];
+
   const rows: NormalizedDispatchRow[] = [];
 
   // 伝票No行は配車No行の少し上に来るため、全ブロック境界を上方向に upShift だけずらす。
   // これで各ブロック=[この配車No行−upShift, 次の配車No行−upShift) となり、伝票No行〜
   // 住所行までの1配送分のサブ行を過不足なく含む（index単純スライスの隣ブロック混入を回避）。
   const upShift = rowTol;
-  for (let b = 0; b < blockStarts.length; b++) {
+  for (let b = 0; b < keyTops.length; b++) {
     const lowerY = keyTops[b] - upShift;
     const upperY = b + 1 < keyTops.length ? keyTops[b + 1] - upShift : Infinity;
     const blockWords = sorted.filter((w) => w.top >= lowerY && w.top < upperY);
