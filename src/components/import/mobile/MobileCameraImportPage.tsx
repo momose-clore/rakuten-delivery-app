@@ -3,8 +3,9 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { CornerAdjuster } from "./CornerAdjuster";
 
-type Step = "guide" | "capture" | "quality" | "processing" | "done";
+type Step = "guide" | "capture" | "adjust" | "quality" | "processing" | "done";
 type CaptureMode = "screen" | "paper";
 
 const GUIDE_MESSAGES = [
@@ -33,19 +34,27 @@ export function MobileCameraImportPage({
   const [quality, setQuality] = useState<{ level: string; score: number; warnings: string[]; blockingReasons: string[]; canProceedToOcr: boolean } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+  // 撮影 → まず四隅調整ステップへ（斜め撮り補正のため）
+  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setSelectedFile(file);
+    setError("");
+    setStep("adjust");
+  }
 
-    setPreviewUrl(URL.createObjectURL(file));
+  // 補正後(または原本)の画像をアップロードして品質確認へ
+  async function uploadImage(image: Blob) {
+    setPreviewUrl(URL.createObjectURL(image));
     setStep("quality");
     setLoading(true);
     setError("");
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", image, "capture.jpg");
     formData.append("captureMode", captureMode);
 
     const res = await fetch("/api/admin/dispatch-import/camera/upload", { method: "POST", body: formData });
@@ -144,6 +153,23 @@ export function MobileCameraImportPage({
 
         <button onClick={() => setStep("guide")} className="w-full text-sm text-gray-500 underline">
           ← 戻る
+        </button>
+      </div>
+    );
+  }
+
+  if (step === "adjust" && selectedFile) {
+    return (
+      <div className="max-w-md mx-auto space-y-4 px-4 py-6">
+        <h1 className="text-xl font-bold text-gray-900">四隅を合わせる</h1>
+        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>}
+        <CornerAdjuster
+          file={selectedFile}
+          onConfirm={(blob) => uploadImage(blob)}
+          onSkip={() => uploadImage(selectedFile)}
+        />
+        <button onClick={() => { setStep("capture"); setSelectedFile(null); }} className="w-full text-sm text-gray-500 underline">
+          ← 撮り直す
         </button>
       </div>
     );
