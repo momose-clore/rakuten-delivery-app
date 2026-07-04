@@ -33,8 +33,11 @@ export function extractL1MMetadata(rawText: string): L1MMetadata {
     if (simpleVehicle) meta.vehicleNo = simpleVehicle[1];
   }
 
-  // 右上総数ボックス（常温/クーラー/ケース数/荷数計）
-  const summaryBlock = rawText.match(/常温[\s\S]{0,50}クーラー[\s\S]{0,50}ケース[\s\S]{0,50}荷数/);
+  // 右上総数ボックス（常温/クーラー/ケース数/箱数計 or 荷数計）。ラベル行の直後に数値行が
+  // 来るため、ラベル群＋続く数値まで含めて拾う。帳票により「箱数計」表記のこともある。
+  const summaryBlock = rawText.match(
+    /常温[\s\S]{0,80}(?:クーラー|クーラ)[\s\S]{0,80}ケース[\s\S]{0,80}(?:箱数計|荷数計|箱数|荷数|箱計|数計)[\s\S]{0,80}/
+  );
   if (summaryBlock) {
     const nums = summaryBlock[0].match(/\d+/g) ?? [];
     if (nums.length >= 4) {
