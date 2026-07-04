@@ -38,6 +38,14 @@ const STD_TILE = {
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors｜地図: <a href="https://openstreetmap.jp/">OSM Japan</a>',
   },
 };
+// 詳細：国土地理院タイル（建物・区画が細かく見える／無料・キー不要・出典表示で合法利用）
+const GSI_TILE = {
+  url: "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
+  options: {
+    maxZoom: 18,
+    attribution: '地図: <a href="https://maps.gsi.go.jp/development/ichiran.html">地理院タイル（国土地理院）</a>',
+  },
+};
 // サテライト：Esri World Imagery（無料・キー不要）
 const SAT_TILE = {
   url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -116,7 +124,7 @@ export function LiveVehicleMap({
   /** 配送先ピン（配送順＋宛名）。選択号車のルート上の停止点を番号付きで表示する。 */
   routeStops?: RouteStop[] | null;
 }) {
-  const [sat, setSat] = useState(false);
+  const [base, setBase] = useState<"std" | "gsi" | "sat">("std"); // ベース地図：標準/詳細(GSI)/航空写真
   const [mapError, setMapError] = useState(false);
   const [ready, setReady] = useState(false);
 
@@ -215,16 +223,16 @@ export function LiveVehicleMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // サテライト切替（タイルのみ差し替え）
+  // ベース地図切替（タイルのみ差し替え）
   useEffect(() => {
     const L = getLeaflet();
     const map = mapRef.current;
     if (!L || !map) return;
     if (tileRef.current) tileRef.current.remove();
-    const t = sat ? SAT_TILE : STD_TILE;
+    const t = base === "sat" ? SAT_TILE : base === "gsi" ? GSI_TILE : STD_TILE;
     tileRef.current = L.tileLayer(t.url, t.options);
     tileRef.current.addTo(map);
-  }, [sat]);
+  }, [base]);
 
   // ピン更新（GPS ポーリングで pins が変わるたびに反映）
   useEffect(() => {
@@ -331,10 +339,26 @@ export function LiveVehicleMap({
         >
           全体表示
         </button>
-        <label className="flex cursor-pointer items-center gap-1.5 rounded-md bg-white/95 px-2.5 py-1.5 text-[12px] shadow-sm">
-          <input type="checkbox" checked={sat} onChange={(e) => setSat(e.target.checked)} />
-          サテライト
-        </label>
+        <div className="flex overflow-hidden rounded-md bg-white/95 text-[12px] shadow-sm">
+          {(
+            [
+              { key: "std", label: "標準" },
+              { key: "gsi", label: "詳細" },
+              { key: "sat", label: "写真" },
+            ] as const
+          ).map((b) => (
+            <button
+              key={b.key}
+              onClick={() => setBase(b.key)}
+              className={
+                "px-2.5 py-1.5 font-medium transition " +
+                (base === b.key ? "bg-[#26324F] text-white" : "text-gray-600 hover:bg-gray-100")
+              }
+            >
+              {b.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {showLegend && (
