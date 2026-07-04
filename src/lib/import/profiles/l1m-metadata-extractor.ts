@@ -9,6 +9,14 @@ export function extractL1MMetadata(rawText: string): L1MMetadata {
   const titleMatch = rawText.match(/L1M貨物一覧表|配車予定表/);
   if (titleMatch) meta.title = titleMatch[0];
 
+  // 左上バーコード番号：独立した10桁トークン（伝票No=20始まり15桁とはトークン長で区別）。
+  // 専用デコーダやTesseractを足さず OCR.space の結果からそのまま取得（OCR.space方針を維持）。
+  const norm = correctDigitMisreads(toHalfWidth(rawText)).replace(/[（）()]/g, " ");
+  // 実データのバーコードは 26始まり10桁。まずそれを狙い、無ければ独立10桁トークンを採用。
+  const bcMatch =
+    norm.match(/(?:^|[^\d])(26\d{8})(?![\d])/) ?? norm.match(/(?:^|[^\d])(\d{10})(?![\d])/);
+  if (bcMatch) meta.barcodeText = bcMatch[1];
+
   // 拠点名（例: 美女木）
   const depotMatch = rawText.match(/([^\s\d]{2,6})\s*(?:W[1-6]|ウェーブ)/);
   if (depotMatch) meta.depotName = depotMatch[1];
