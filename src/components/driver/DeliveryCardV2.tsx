@@ -10,7 +10,7 @@
  */
 
 import { useState } from "react";
-import { Users } from "lucide-react";
+import { Users, Trash2 } from "lucide-react";
 import type { DeliveryCardItem, DeliveryStatus } from "./DeliveryCard";
 import type { CoordinateBadgeType } from "@/types/prediction";
 import { assessAddressConfidence } from "@/lib/address/address-confidence";
@@ -46,14 +46,27 @@ interface Props {
   /** フォロー（応援取り込み）トグルを表示する場合に渡す */
   isFollowed?: boolean;
   onFollowToggle?: () => void;
+  /** 配送先の削除（取込ミス/重複の掃除）。渡すとヘッダーにゴミ箱を表示 */
+  onDelete?: (deliveryItemId: string) => Promise<void>;
 }
 
 const GOLD_ACCENT = "#b8923f";
 
-export function DeliveryCardV2({ item, onStatusChange, onMemoSave, isFollowed, onFollowToggle }: Props) {
+export function DeliveryCardV2({ item, onStatusChange, onMemoSave, isFollowed, onFollowToggle, onDelete }: Props) {
   const [memo, setMemo] = useState(item.memo ?? "");
   const [savingMemo, setSavingMemo] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    await onDelete(item.deliveryItemId);
+    // 成功すれば親のリストから消えるのでstate復帰は不要
+    setDeleting(false);
+    setConfirmDelete(false);
+  }
 
   const statusConfig = STATUS_CONFIG[item.deliveryStatus] ?? STATUS_CONFIG.ASSIGNED;
   const done = isDone(item.deliveryStatus);
@@ -100,10 +113,36 @@ export function DeliveryCardV2({ item, onStatusChange, onMemoSave, isFollowed, o
             <p className="text-[26px] font-mono font-black text-white leading-none tracking-tight truncate">{fullKey}</p>
           </div>
         </div>
-        <span className={`text-xs px-2.5 py-1 rounded-full font-bold shrink-0 ${statusConfig.className}`}>
-          {statusConfig.label}
-        </span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-xs px-2.5 py-1 rounded-full font-bold ${statusConfig.className}`}>
+            {statusConfig.label}
+          </span>
+          {onDelete && !confirmDelete && (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              aria-label="この配送を削除"
+              className="p-1.5 rounded-lg bg-white/15 text-white/90 hover:bg-white/25 active:scale-95 transition"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* 削除確認バー */}
+      {onDelete && confirmDelete && (
+        <div className="px-4 py-2.5 bg-red-50 border-b border-red-200 flex items-center justify-between gap-2">
+          <span className="text-sm text-red-700 font-medium">この配送を削除しますか？</span>
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmDelete(false)} disabled={deleting}
+              className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 bg-white">やめる</button>
+            <button onClick={handleDelete} disabled={deleting}
+              className="text-sm px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold disabled:opacity-50">
+              {deleting ? "削除中..." : "削除する"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="px-4 py-4 space-y-4">
         {/* フォロー（応援）トグル：押すと自分のページに取り込まれる */}

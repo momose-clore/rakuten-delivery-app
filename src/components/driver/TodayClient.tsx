@@ -17,7 +17,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { signOut } from "next-auth/react";
 import Image from "next/image";
-import { Camera, FileText, Truck, Navigation, Check, Users, List, Map as MapIcon, PackageCheck, ChevronRight, ShieldCheck, Clock, Flag } from "lucide-react";
+import { Camera, FileText, Truck, Navigation, Check, Users, List, Map as MapIcon, PackageCheck, ChevronRight, ShieldCheck, Clock, Flag, Trash2 } from "lucide-react";
 
 const NAVY = "#26324F";
 const NAVY_DARK = "#1b2438";
@@ -130,6 +130,17 @@ export function TodayClient() {
     }
   };
 
+  const remove = async (deliveryItemId: string) => {
+    const res = await fetch(`/api/driver/delivery-items/${deliveryItemId}`, { method: "DELETE" });
+    if (res.ok) {
+      setItems((prev) => prev.filter((i) => i.deliveryItemId !== deliveryItemId));
+      setToast("配送を削除しました");
+    } else {
+      const b = await res.json().catch(() => ({}));
+      setToast(b.error ?? "削除に失敗しました");
+    }
+  };
+
   const submitWarehouse = async (time: string) => {
     const res = await fetch("/api/driver/warehouse-arrival", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ time }),
@@ -174,7 +185,7 @@ export function TodayClient() {
           onDeliver={() => setView("delivery")} onSubmitWarehouse={submitWarehouse} onSubmitFinish={submitFinish} onCamera={() => router.push("/driver/camera")} onPdf={importPdf} />
       )}
       {view === "delivery" && (
-        <Delivery items={items} mapsUrls={mapsUrls} onComplete={complete} onToggleNoMis={toggleNoMis} onHome={() => setView("home")} onFlash={setToast} onCamera={() => router.push("/driver/camera")} onFollow={() => setView("follow")} />
+        <Delivery items={items} mapsUrls={mapsUrls} onComplete={complete} onToggleNoMis={toggleNoMis} onDelete={remove} onHome={() => setView("home")} onFlash={setToast} onCamera={() => router.push("/driver/camera")} onFollow={() => setView("follow")} />
       )}
       {view === "follow" && (
         <Follow onBack={() => { setView("delivery"); void fetchToday(); }} onFlash={setToast} />
@@ -282,7 +293,7 @@ function Home({ driver, allDone, warehouseSaved, finishedSaved, onDeliver, onSub
   );
 }
 
-function Delivery({ items, mapsUrls, onComplete, onToggleNoMis, onHome, onFlash, onCamera, onFollow }: { items: ApiItem[]; mapsUrls: string[]; onComplete: (id: string) => void; onToggleNoMis: (id: string, value: boolean) => void; onHome: () => void; onFlash: (m: string) => void; onCamera: () => void; onFollow: () => void }) {
+function Delivery({ items, mapsUrls, onComplete, onToggleNoMis, onDelete, onHome, onFlash, onCamera, onFollow }: { items: ApiItem[]; mapsUrls: string[]; onComplete: (id: string) => void; onToggleNoMis: (id: string, value: boolean) => void; onDelete: (id: string) => Promise<void>; onHome: () => void; onFlash: (m: string) => void; onCamera: () => void; onFollow: () => void }) {
   const defaultWave = items.find((i) => !isDone(i.deliveryStatus))?.waveNo ?? items[0]?.waveNo ?? WAVES[0];
   const [selectedWave, setSelectedWave] = useState<string>(defaultWave ?? WAVES[0]);
   const scoped = items.filter((i) => (i.waveNo ?? WAVES[0]) === selectedWave);
@@ -331,7 +342,7 @@ function Delivery({ items, mapsUrls, onComplete, onToggleNoMis, onHome, onFlash,
           <div className="rounded-2xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-400">このウェーブの配送はありません</div>
         ) : scoped.map((i) => (
           <DeliveryCard key={i.deliveryItemId} item={i} current={next != null && i.deliveryItemId === next.deliveryItemId}
-            onComplete={() => onComplete(i.deliveryItemId)} onToggleNoMis={(v) => onToggleNoMis(i.deliveryItemId, v)} />
+            onComplete={() => onComplete(i.deliveryItemId)} onToggleNoMis={(v) => onToggleNoMis(i.deliveryItemId, v)} onDelete={() => onDelete(i.deliveryItemId)} />
         ))}
 
         <button onClick={onFollow}
@@ -354,11 +365,13 @@ function Delivery({ items, mapsUrls, onComplete, onToggleNoMis, onHome, onFlash,
   );
 }
 
-function DeliveryCard({ item, current, onComplete, onToggleNoMis }: { item: ApiItem; current?: boolean; onComplete: () => void; onToggleNoMis: (value: boolean) => void }) {
+function DeliveryCard({ item, current, onComplete, onToggleNoMis, onDelete }: { item: ApiItem; current?: boolean; onComplete: () => void; onToggleNoMis: (value: boolean) => void; onDelete?: () => Promise<void> }) {
   const conf = confOf(item.coordinateBadge);
   const done = isDone(item.deliveryStatus);
   const pill = pillOf(item.deliveryStatus);
   const [noMis, setNoMis] = useState(!!item.noMisdelivery);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   return (
     <div className={`rounded-2xl shadow-lg overflow-hidden bg-white ${done ? "opacity-70" : ""} ${current ? "ring-2 ring-blue-600" : "border border-gray-100"}`}>
       {item.follow && (
@@ -371,8 +384,25 @@ function DeliveryCard({ item, current, onComplete, onToggleNoMis }: { item: ApiI
           <p className="text-[10px] text-white/60 leading-none mb-1">{current ? "▶ 対応中 ・ 配車No" : "配車No"}</p>
           <p className="text-[40px] font-mono font-black text-white leading-none tracking-tight">{fullKey(item)}</p>
         </div>
-        <span className="text-[11px] font-bold text-white px-2.5 py-1 rounded-full shrink-0" style={{ background: pill.bg === NAVY ? "rgba(255,255,255,0.2)" : pill.bg }}>{pill.icon} {pill.label}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-[11px] font-bold text-white px-2.5 py-1 rounded-full" style={{ background: pill.bg === NAVY ? "rgba(255,255,255,0.2)" : pill.bg }}>{pill.icon} {pill.label}</span>
+          {onDelete && !confirmDel && (
+            <button onClick={() => setConfirmDel(true)} aria-label="この配送を削除"
+              className="p-1.5 rounded-lg bg-white/15 text-white/90 active:scale-95 transition">
+              <Trash2 size={16} />
+            </button>
+          )}
+        </div>
       </div>
+      {onDelete && confirmDel && (
+        <div className="px-4 py-2.5 bg-red-50 border-b border-red-200 flex items-center justify-between gap-2">
+          <span className="text-sm text-red-700 font-medium">この配送を削除しますか？</span>
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmDel(false)} disabled={deleting} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-600 bg-white">やめる</button>
+            <button onClick={async () => { setDeleting(true); await onDelete(); }} disabled={deleting} className="text-sm px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold disabled:opacity-50">{deleting ? "削除中..." : "削除する"}</button>
+          </div>
+        </div>
+      )}
       <div className="p-4 space-y-3">
         <div>
           {conf && <span className="inline-block text-white text-[11px] font-bold px-2 py-0.5 rounded-md mb-1" style={{ background: conf.bg }}>{conf.label}</span>}
