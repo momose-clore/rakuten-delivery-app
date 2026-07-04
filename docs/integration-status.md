@@ -44,7 +44,8 @@
 - `GET /api/cario/health[?driftDate=YYYY-MM-DD]` … 疎通・同期鮮度・stale件数・CARIO↔DBドリフト
 - `GET /api/cario/vehicle-matches?date=` … **CARIO号車↔OCR号車のマッチング提案（read-only）**。配車ロジック(α/β)が参照して自動割当に活用可（※γは実割当に書き込まない）
 - `GET /api/cario/sites` … 現場一覧（site_id絞り込みの選択肢）
-- **`GET /api/delivery-timing/summary?date=`（NEW・β支援）** … Wave別の遅配集計（total/completed/lateCompleted(遅配実績)/overdueActive(進行中遅配)/soon/onTime）。**β のダッシュボード/進捗の「遅配パネル」は fetch するだけでOK**。判定は `src/lib/waves.ts`。
+- **`GET /api/delivery-timing/summary?date=`（β支援）** … Wave別の遅配集計（total/completed/lateCompleted(遅配実績)/overdueActive(進行中遅配)/soon/onTime）。**β のダッシュボード/進捗の「遅配パネル」は fetch するだけでOK**。判定は `src/lib/waves.ts`。
+- **`GET /api/admin/kpi/summary?date=`（NEW・β支援 `df8bdc0`）** … 日次KPI：稼働ドライバー数/完了率/オンタイム率/遅配(実績・進行中)/Wave別/ドライバー別。**ダッシュボード(item4)は fetch するだけ**。
 - `syncCarioAssignments()` / `getShiftListPayload()`（`src/lib/cario/`）… 取込・一覧の共有コア
 - 詳細は `docs/cario-integration.md`（Runbook）参照
 
@@ -98,7 +99,7 @@ riku 指示：Googleマップ連携の“性能”を上げる。**A（配送を
 - [x] **A② 道路ベース最適化** → **α実装完了・origin反映済**（`src/lib/routes/ors.ts`＝ORS最適化API/VROOM、`generateRoute` が優先使用・失敗/未設定/70件超は A①(2-opt) へ自動フォールバック。使用エンジンを `optimizer(ors|local)` で監査記録）。ビルド緑。キー疎通テスト200確認済。
   - 🔑 **本番で有効化するには Vercel の Production env に `ORS_API_KEY` 設定が必要**（現在キーはローカル `.env.local` のみ＝gitignore・非コミット・漏洩なし）。未設定の本番では自動で A①(2-opt) にフォールバックするので**壊れない**。→ **riku/β：`vercel env add ORS_API_KEY`（or ダッシュボード）で本番投入を**。
   - 将来スケールで枠超過するなら OSRM+VROOM 自前ホスト（ソフト無料）だが**現状は不要**（12〜15号車/日＝1日十数リクエスト）。
-- [ ] **A③ 地図に道なり経路を描画** … `src/components/map/LiveVehicleMap.tsx` は **α区画**。**β は触らず**、②の経路ジオメトリの受け渡し方（返却フィールド）だけ決めてこの節に書けば **α が描画実装**します。
+- [x] **A③ 地図に道なり経路を描画** → **α完了（`9a8176d`）**。`LiveVehicleMap` に `routePath` prop（Leaflet polyline）追加、`getRouteGeometry`（ORS Directions）＋read-only API **`GET /api/routes/geometry?driverId=&date=&waveNo=&return=1`**（→`{path:[lat,lng][], stopCount}`）。**消費方法**：地図に `<LiveVehicleMap ... routePath={path} />` を渡すだけ。ドライバーの route_order 順を実道路で描画。ORS未設定/失敗時は線なし（壊れない）。βは地図ファイル非編集でOK。
 - 工数目安：約2〜2.5人月 / 運用費 ¥0。
 
 ### 🅳 住所精度（ピンのズレ解消）— 担当 β
@@ -287,7 +288,7 @@ riku の Downloads の実ファイルを無料デコーダ(zxing)で実測:
 | 3 | **CI（型/lint/test自動チェック）** ビルド破壊の再発防止 | **γ** | ★高 | ✅ **完了**（`.github/workflows/ci.yml`・`60b0463`。push/PRで typecheck/lint/test） |
 | 1 | **遅配のリアルタイム活用＆通知**：締切カウントダウン/遅配バッジ/遅配リスト＋Wave締切間近のLINE通知 | β(UI)＋γ(API済)＋LINE担当(通知) | ★高 | 🟡 基盤済(`waves.ts`/`/api/delivery-timing/summary`)・**UI/通知未接続** |
 | 2 | **配達完了時刻 `completedAt` 記録**（遅配の実績計測・KPI化） | schema/OCR or β | ★高 | ⬜ schema追加（生成client差分に注意＝ツリー安定時に） |
-| 4 | **KPIダッシュボード**（遅配率/完了率/ドライバー別/OCR精度推移） | β | 中 | ⬜ dashboardは骨組み。γが集計API提供可 |
+| 4 | **KPIダッシュボード**（遅配率/完了率/ドライバー別/OCR精度推移） | β(UI)＋γ(API済) | 中 | 🟡 **γがKPI集計API提供済**（`GET /api/admin/kpi/summary?date=`・`df8bdc0`）。β はUI描画のみ |
 | 5 | **不在→再配達フロー**（ABSENT/RETURNED の再配達導線） | β | 中 | ⬜ |
 | 6 | **通知全般**（新規割当・シフト変更・不在）LINE基盤(`lib/line/send.ts`)活用 | LINE担当 | 中 | ⬜ |
 | 7 | **ドライバーPWA/オフライン**（電波断でもtodayルート閲覧＋更新キュー） | β | 中 | ⬜ PWA土台あり |
