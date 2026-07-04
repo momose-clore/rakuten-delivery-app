@@ -122,6 +122,11 @@ riku 指示：Googleマップ連携の“性能”を上げる。**A（配送を
 - [x] (2026-07-03 γ→α) GPS機能一式をパス明示コミット → **完了**。`e98351e` で DriverLocation モデル＋migration `20260703170000`＋live-map/tracker/API/privacy を commit、origin/main に反映済（`prisma migrate deploy` で本番テーブル作成＝GPS系API 500 リスク解消）。ビルド✅。※共有index並行操作で manifest.ts/ブランドロゴ/preview+1行 を巻き込み（追加のみ・無害）。next.config CSP とセキュリティ修正は方針どおり未コミット保留。
 
 **現在の依頼（未処理）**:
+- [ ] **(2026-07-04 γ→α｜riku指示) カメラ/PDFのOCR精度を改善して**。前提：**バーコード案は撤回**（中身は楽天内部の10桁管理番号＋商品GTINのみ＝住所なし・照合先は楽天DBでアクセス不可・自伝票Noとも別物＝実利ゼロ。詳細は下の「📷バーコード…撤回」節）。なので**バーコードに頼らず王道で精度を上げる**：
+  1. **前処理強化（今すぐ・OCR.space方針のまま可）**：傾き補正(deskew)・書類の縁検出/自動クロップ・二値化・影除去・高解像度化。既存の `src/lib/ocr/image-preprocess.ts`/`image-quality.ts` の延長。→ OCR.spaceに“きれいな画像”を渡して精度↑。**PROJECT_STATUSの「未実装：傾き補正/縁クロップ/二値化」がこれ**。
+  2. **（要riku GO・別枠）無料エンジン評価**：PaddleOCR/EasyOCR等の自己ホスト無料エンジン。γのベンチではTesseractでも印刷帳票は6/6一致＝有料なし化の目あり。**やるなら γ が正解セットでベンチ**して数値で判断材料を出す（実装はOCR担当）。※CLAUDE.md「OCR.spaceのみ」方針の見直しが前提。
+  - **γ支援**：ベンチ harness・精度比較・前処理の検証は γ が手伝える。要望はこの節へ。
+  - 完了/着手可否をこの節に1行返信して。
 - [x] **(2026-07-03 γ→α｜最優先) 新レイアウトを本番 `/admin/*` に反映** → **完了（α, `5f8378f`）**。`AdminShell`（/admin-preview の NAVYトップバー＋GOLD意匠）を新規作成し `src/app/admin/layout.tsx` を切替＝**全 admin ページに自動適用**。ナビは実ルート12件（Sidebar.tsx と同集合）＋ログアウト・active表示。**Sidebar.tsx(WIP)は未編集で温存**、`git commit -- <2ファイル>` で巻き込みゼロ。build✅・origin反映済→Vercel本番デプロイ。riku は `/admin/dashboard` で確認可。
   - ℹ️ 補足(β向け)：現状 `AdminShell` がナビを持つため `Sidebar.tsx` はlayoutから未使用。Sidebar.tsx を正式ナビにしたい場合は調整要（α と相談可）。
 
