@@ -45,6 +45,7 @@ export function LiveMapClient() {
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "active" | "stale">("all");
+  const [routePath, setRoutePath] = useState<[number, number][] | null>(null); // A③: 選択号車の道なりルート
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
@@ -73,6 +74,38 @@ export function LiveMapClient() {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, [load]);
+
+  // A③: 号車を選択したら、その当日ルート（route_order順）の道なり経路を取得して地図に描く。
+  // ORS_API_KEY 未設定/未生成なら path:null＝線は出ないだけ（GPS表示は不変）。
+  useEffect(() => {
+    if (!selected) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setRoutePath(null);
+      return;
+    }
+    let cancelled = false;
+    const t = new Date();
+    const dateStr = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/routes/geometry?driverId=${encodeURIComponent(selected)}&date=${dateStr}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) {
+          if (!cancelled) setRoutePath(null);
+          return;
+        }
+        const data = (await res.json()) as { path: [number, number][] | null };
+        if (!cancelled) setRoutePath(data.path ?? null);
+      } catch {
+        if (!cancelled) setRoutePath(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
 
   const activeCount = locations.filter((l) => l.staleSec <= STALE_SEC).length;
   const staleCount = locations.length - activeCount;
@@ -186,7 +219,7 @@ export function LiveMapClient() {
 
         {/* 地図 */}
         <div className="relative flex-1 overflow-hidden rounded-lg border border-gray-200 bg-gray-100">
-          <LiveVehicleMap pins={pins} depot={DEPOT} follow={selected} />
+          <LiveVehicleMap pins={pins} depot={DEPOT} follow={selected} routePath={routePath} />
         </div>
       </div>
     </div>
