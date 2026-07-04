@@ -3,12 +3,14 @@
 /**
  * 管理画面の共通シェル（新レイアウト）。
  * /admin-preview の意匠（NAVY トップバー＋GOLD アクセント）を本番の全 /admin/* に適用する。
- * App Router の layout から使うため、全 admin ページが自動でこのチェームを纏う。
+ * App Router の layout から使うため、全 admin ページが自動でこのテーマを纏う。
  *
- * ⚠ 既存の `Sidebar.tsx`（別ターミナル WIP）には一切触れない。
- *    ナビの実ルートは Sidebar.tsx と同一集合をここに複製（リンク漏れ防止）。
+ * ナビは「似た機能」を5グループのドロップダウンに集約（ボタン過多の解消）:
+ *   ホーム / 取込 / 配車 / 地図・住所 / 連携
+ * 各ページ(URL)は不変。⚠ 既存の `Sidebar.tsx`（別ターミナル WIP）には触れない。
  */
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -26,6 +28,8 @@ import {
   MapPinned,
   PlusSquare,
   ExternalLink,
+  Share2,
+  ChevronDown,
   LogOut,
   UserCircle2,
   type LucideIcon,
@@ -36,26 +40,76 @@ const NAVY = "#26324F";
 const GOLD = "#b8923f";
 
 type NavItem = { href: string; label: string; icon: LucideIcon; external?: boolean };
+type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] };
 
-const navItems: NavItem[] = [
-  { href: "/admin/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
-  { href: "/admin/dispatch-import", label: "配送表取込", icon: FolderInput },
-  { href: "/admin/dispatch-images", label: "画像アップロード", icon: ImageIcon },
-  { href: "/admin/ocr-review", label: "取込確認", icon: ScanText },
-  { href: "/admin/shifts", label: "シフト取込", icon: CalendarDays },
-  { href: "/admin/assignments", label: "割当", icon: ClipboardList },
-  { href: "/admin/routes", label: "ルート確認", icon: MapPin },
-  { href: "/admin/location-overrides", label: "住所補正", icon: MapPinOff },
-  { href: "/admin/import-accuracy", label: "取込精度", icon: BarChart3 },
-  { href: "/admin/progress", label: "配送進捗", icon: TruckIcon },
-  { href: "/admin/live-map", label: "号車リアルタイム地図", icon: MapPinned },
-  { href: "/admin/extra-vehicle-requests", label: "増便申請", icon: PlusSquare },
-  // 外部: CARIO（楽天）美女木シフトページ。新規タブで開く（CARIOログインが必要）。
-  { href: "https://cario-app-two.vercel.app/manager/shifts", label: "CARIOシフト", icon: ExternalLink, external: true },
+/* トップの単独リンク */
+const HOME: NavItem = { href: "/admin/dashboard", label: "ホーム", icon: LayoutDashboard };
+
+/* 似た機能を集約した5グループ（各ページURLは従来どおり） */
+const GROUPS: NavGroup[] = [
+  {
+    id: "import",
+    label: "取込",
+    icon: FolderInput,
+    items: [
+      { href: "/admin/dispatch-import", label: "配送表取込", icon: FolderInput },
+      { href: "/admin/dispatch-images", label: "画像アップロード", icon: ImageIcon },
+      { href: "/admin/ocr-review", label: "取込確認", icon: ScanText },
+      { href: "/admin/import-accuracy", label: "取込精度", icon: BarChart3 },
+    ],
+  },
+  {
+    id: "dispatch",
+    label: "配車",
+    icon: TruckIcon,
+    items: [
+      { href: "/admin/shifts", label: "シフト取込", icon: CalendarDays },
+      { href: "/admin/assignments", label: "割当", icon: ClipboardList },
+      { href: "/admin/routes", label: "ルート確認", icon: MapPin },
+      { href: "/admin/progress", label: "配送進捗", icon: TruckIcon },
+    ],
+  },
+  {
+    id: "map",
+    label: "地図・住所",
+    icon: MapPinned,
+    items: [
+      { href: "/admin/live-map", label: "号車リアルタイム地図", icon: MapPinned },
+      { href: "/admin/location-overrides", label: "住所補正", icon: MapPinOff },
+    ],
+  },
+  {
+    id: "link",
+    label: "連携",
+    icon: Share2,
+    items: [
+      { href: "/admin/extra-vehicle-requests", label: "増便申請", icon: PlusSquare },
+      // 外部: CARIO（楽天）美女木シフトページ。新規タブで開く（CARIOログインが必要）。
+      { href: "https://cario-app-two.vercel.app/manager/shifts", label: "CARIOシフト", icon: ExternalLink, external: true },
+    ],
+  },
 ];
+
+function isItemActive(pathname: string, it: NavItem): boolean {
+  return !it.external && (pathname === it.href || pathname.startsWith(it.href + "/"));
+}
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [openId, setOpenId] = useState<string | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
+
+  // ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    if (!openId) return;
+    const onDown = (e: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) setOpenId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [openId]);
+
+  const homeActive = isItemActive(pathname, HOME);
 
   return (
     <div className="min-h-screen bg-[#f4f5f7] text-gray-900 flex flex-col">
@@ -69,36 +123,81 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             CLORE <span className="font-normal text-gray-300">DELIVERY</span>
           </Link>
 
-          <nav className="flex items-center overflow-x-auto no-scrollbar">
-            {navItems.map(({ href, label, icon: Icon, external }) => {
-              const active = !external && (pathname === href || pathname.startsWith(href + "/"));
-              const className =
+          <nav ref={navRef} className="flex items-center">
+            {/* ホーム（単独） */}
+            <Link
+              href={HOME.href}
+              onClick={() => setOpenId(null)}
+              className={
                 "flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-[13px] transition " +
-                (active ? "text-white" : "border-transparent text-gray-300 hover:text-white");
-              const style = active ? { borderColor: GOLD } : undefined;
-              const inner = (
-                <>
-                  <Icon size={15} className="shrink-0" />
-                  <span className="hidden xl:inline">{label}</span>
-                </>
-              );
-              // 外部リンク（CARIO 等）は新規タブで開く
-              return external ? (
-                <a
-                  key={href}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title={`${label}（外部・新規タブ）`}
-                  className={className}
-                  style={style}
-                >
-                  {inner}
-                </a>
-              ) : (
-                <Link key={href} href={href} title={label} className={className} style={style}>
-                  {inner}
-                </Link>
+                (homeActive ? "text-white" : "border-transparent text-gray-300 hover:text-white")
+              }
+              style={homeActive ? { borderColor: GOLD } : undefined}
+            >
+              <HOME.icon size={15} className="shrink-0" />
+              <span className="hidden sm:inline">{HOME.label}</span>
+            </Link>
+
+            {/* グループ（ドロップダウン） */}
+            {GROUPS.map((g) => {
+              const GroupIcon = g.icon;
+              const groupActive = g.items.some((it) => isItemActive(pathname, it));
+              const open = openId === g.id;
+              return (
+                <div key={g.id} className="relative">
+                  <button
+                    onClick={() => setOpenId(open ? null : g.id)}
+                    className={
+                      "flex items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-3 text-[13px] transition " +
+                      (groupActive || open ? "text-white" : "border-transparent text-gray-300 hover:text-white")
+                    }
+                    style={groupActive || open ? { borderColor: GOLD } : undefined}
+                    aria-expanded={open}
+                  >
+                    <GroupIcon size={15} className="shrink-0" />
+                    <span className="hidden sm:inline">{g.label}</span>
+                    <ChevronDown
+                      size={13}
+                      className={"shrink-0 transition-transform " + (open ? "rotate-180" : "")}
+                    />
+                  </button>
+
+                  {open && (
+                    <div className="absolute left-0 top-full z-[1000] mt-1 min-w-[210px] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 text-gray-800 shadow-lg">
+                      {g.items.map((it) => {
+                        const ItemIcon = it.icon;
+                        const active = isItemActive(pathname, it);
+                        const cls =
+                          "flex items-center gap-2 px-3 py-2 text-[13px] transition hover:bg-gray-50 " +
+                          (active ? "bg-blue-50 font-semibold text-blue-700" : "text-gray-700");
+                        return it.external ? (
+                          <a
+                            key={it.href}
+                            href={it.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cls}
+                            onClick={() => setOpenId(null)}
+                          >
+                            <ItemIcon size={15} className="shrink-0 text-gray-400" />
+                            <span className="flex-1">{it.label}</span>
+                            <ExternalLink size={12} className="shrink-0 text-gray-400" />
+                          </a>
+                        ) : (
+                          <Link
+                            key={it.href}
+                            href={it.href}
+                            className={cls}
+                            onClick={() => setOpenId(null)}
+                          >
+                            <ItemIcon size={15} className={"shrink-0 " + (active ? "text-blue-600" : "text-gray-400")} />
+                            <span className="flex-1">{it.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>
