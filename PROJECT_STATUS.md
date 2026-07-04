@@ -7,6 +7,13 @@
 
 ## 📣 全ターミナル共有（α/β/γ）2026-07-03
 
+### 🆕 方針変更＆実装：カメラ生写真は Gemini(画像AI) で読む（2026-07-04・riku承認）
+密なL1M帳票の**生カメラ写真はOCR.spaceでは読み順が崩れて限界**（前処理/回転/二値化すべて実証NG）。riku承認で**「カメラOCRに限り」AI禁止を解除**し、**無料枠のあるGemini(Flash)**で構造化抽出。
+- **ハイブリッド**: カメラ生写真=Gemini（`src/lib/ocr/gemini.ts`・JSONスキーマ強制で読み順問題を回避）／**PDF・スキャン画像=従来OCR.space厳守**。
+- 実装: `camera/process` が Gemini優先→未設定/失敗時OCR.spaceにフォールバック。`GEMINI_API_KEY`(本番登録済)・モデル `gemini-flash-latest`（`gemini-2.0-flash`は無料枠外で429）。
+- **本番検証**: 横向き実写真(IMG_7705)で **配車No/伝票/電話/住所/数量すべて正解**（クエストガーデン1101・扇 も正しく取得）。OCR.spaceでは散乱していた同じ写真がGeminiで満点。
+- 個人情報はGeminiへ送るが console.log しない（PII外部送信はブロッカー扱いしない方針）。無料枠はデータ学習利用され得る点は留意。
+
 ### 🤝 α→γ 調整：貨物一覧表バーコード＆カメラ強化の共同開発（2026-07-04）
 riku指示で「左上バーコード読取（γ担当）＋カメラの手動四隅調整＋ブレ補正」を共同開発。α側の状況と依頼：
 
@@ -2101,3 +2108,10 @@ npm run db:seed:prod
 ### ⚠️ 本番反映（保留）
 - ブロッカー: ①barcode.ts型エラーでbuild失敗（γ依頼済）②未コミット27ファイルが3ターミナル混在③本番env未設定(LINE/PULLトークン)④本番DB migrate未(extra_vehicle_requests/driver_locations・γ調整)
 - 安全順: barcode修正→コミット範囲合意→Vercel env登録→本番migrate→push/deploy。β単独pushはしない
+
+### 🚀 本番反映 完了（2026-07-04）
+- git push（80d4fdb→…）＋ビルドコマンドに `prisma migrate deploy` 追加 → Vercel本番へデプロイ
+- Vercel CLI認証済（momose-clore）を利用し、**不足env（LINE_CHANNEL_ACCESS_TOKEN/LINE_CHANNEL_SECRET/LINE_EXTRA_VEHICLE_GROUP_ID/EXTRA_VEHICLE_PULL_TOKEN）を本番Productionへ追加** → redeploy（✓ Ready）
+- 検証: 本番 `GET /api/external/extra-vehicle-requests`（Bearer）→ **200 {requests:[]}** ＝ extra_vehicle_requestsテーブル存在＋pullトークン有効を確認。driver_locationsも同バッチで適用
+- 既存env（DATABASE_URL/AUTH_SECRET/NEXTAUTH_SECRET/RAKUTEN_APP_API_KEY/OCR_SPACE_API_KEY 等）は設定済
+- 残: 飯田理央(Riobaseball)アカウントはローカルDB限定→本番は別途「ドライバー管理」から作成要。LINE送信は現状「楽天テスト」アカウント＋専用グループ(Cc900…)を使用（本番の正式CARIO公式LINEに切替する場合はtoken差し替え）
