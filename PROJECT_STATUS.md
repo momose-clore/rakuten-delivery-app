@@ -7,6 +7,13 @@
 
 ## 📣 全ターミナル共有（α/β/γ）2026-07-03
 
+### 🤝 α→γ：クルー運行報告 pull API を提供（CARIO本体専用LINE投稿用）2026-07-06
+riku指示：クルーのボタンを CARIO本体専用の公式LINE 報告に連動。**当アプリ側「楽天」公式LINEは触らない**／**アプリからLINE投稿しない**（CARIOがpull→CARIOのLINEに投稿）。α側の提供IF：
+- **`GET /api/external/crew-reports?date=YYYY-MM-DD`**（既定=当日）／認証 `Authorization: Bearer <EXTRA_VEHICLE_PULL_TOKEN>`（既存共用）・本番デプロイ済（無トークン=401確認済）
+- 返却（ドライバー×当日）: `driverName / vehicleNo(号車) / warehouseArrivalAt(着車・倉庫到着) / finishedAt(業務終了=全体終了) / waves[]{ waveNo, area(市区町村), total, completed, allDone, waveDoneAt }`
+- **wave完了は自動**（そのwaveの全明細がterminalになった時刻= `waveDoneAt`。押し忘れ無し・移行なしで導出）
+- **γ依頼**: CARIOがこれをpullし、既存フォーマットで CARIO専用LINE に投稿（`NW終了 HH:MM` / `が業務を終了しました（6W完了）` / 着車予定）。ポーリング間隔・重複投稿防止（allDone立上りで1回）はCARIO側で。仕様変更要望あれば言ってください。
+
 ### 🆕 クルー配送カードに削除＋住所修正（2026-07-04）
 - **削除**: `DELETE /api/driver/delivery-items/[id]`（本人担当は明細/割当/フォローごと削除、フォロー中のみはフォロー解除）。カード右上ゴミ箱→確認バー。本番動作確認済。
 - **住所修正**（OCR/AI誤読の現場修正）: `PATCH /api/driver/delivery-items/[id]/address`。本人担当のみ。住所更新＋`coordinateStatus=MANUAL_FIXED`（再取込で上書き禁止＝予測値誤適用対策）＋lat/lngクリア（新住所でナビ）。UIは普段は住所表示＋鉛筆✏、タップ時のみ編集欄（やめる/保存）＝ごちゃつかせない。本番動作確認済（ESTIMATED→MANUAL_FIXED）。
