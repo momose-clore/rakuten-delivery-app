@@ -34,6 +34,8 @@ export type RouteStop = {
   building?: string | null;
   /** 住所（丁目・番地・号：OCR取込データ）。ポップアップに表示する。 */
   address?: string | null;
+  /** Wave番号（遅配判定の元・β のテーブル表示用）。 */
+  waveNo?: string | null;
   /** 遅配ステータス（waves.ts の deliveryTimingStatus 由来）。late=赤 / soon=橙 / それ以外=紺。 */
   status?: "onTime" | "soon" | "late" | null;
 };

@@ -5,6 +5,21 @@ import { WAREHOUSE } from "@/lib/maps/warehouse";
 import { getRouteGeometry } from "@/lib/routes/ors";
 import type { GeoPoint } from "@/lib/routes/sortByNearest";
 import { normalizeAddress } from "@/lib/address/address-normalizer";
+import { deliveryTimingStatus } from "@/lib/waves";
+
+/** waves.ts の判定を地図/UI 用の status に変換 */
+function toStopStatus(waveNo: string | null): "onTime" | "soon" | "late" | null {
+  switch (deliveryTimingStatus(waveNo)) {
+    case "LATE":
+      return "late";
+    case "SOON":
+      return "soon";
+    case "ON_TIME":
+      return "onTime";
+    default:
+      return null;
+  }
+}
 
 /**
  * A③: 指定ドライバーの配送ルート（route_order 順）を実道路で結んだ経路ジオメトリを返す。
@@ -44,7 +59,7 @@ export async function GET(req: NextRequest) {
       },
     },
     orderBy: { routeOrder: "asc" },
-    include: { deliveryItem: { select: { lat: true, lng: true, customerName: true, address: true } } },
+    include: { deliveryItem: { select: { lat: true, lng: true, customerName: true, address: true, waveNo: true } } },
   });
 
   const withCoords = assignments.filter(
@@ -70,6 +85,9 @@ export async function GET(req: NextRequest) {
     building: a.deliveryItem.address
       ? normalizeAddress(a.deliveryItem.address).buildingName
       : null,
+    // 遅配マーク用（β はテーブル/地図に渡すだけ）。waves.ts の締切判定。
+    waveNo: a.deliveryItem.waveNo ?? null,
+    status: toStopStatus(a.deliveryItem.waveNo ?? null),
   }));
   const stopAddrs = withCoords.map((a) => a.deliveryItem.address ?? null);
 
