@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { LiveVehicleMap, type MapPin } from "@/components/map/LiveVehicleMap";
 import { WAREHOUSE } from "@/lib/maps/warehouse";
 import type { DashboardStats, DriverProgress } from "@/types/progress";
@@ -58,7 +59,6 @@ export function AdminDashboardClient() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [drivers, setDrivers] = useState<DriverProgress[]>([]);
   const [locations, setLocations] = useState<ApiLocation[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | Category>("all");
   const [loading, setLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -195,15 +195,15 @@ export function AdminDashboardClient() {
               </div>
             ) : (
               filteredDrivers.map((d) => (
-                <RouteRow key={d.driverId} d={d} selected={selected === d.driverId}
-                  onSelect={() => setSelected(d.driverId)} hasGps={locations.some((l) => l.driverId === d.driverId)} />
+                <RouteRow key={d.driverId} d={d} date={date}
+                  hasGps={locations.some((l) => l.driverId === d.driverId)} />
               ))
             )}
           </div>
         </div>
 
         <div className="relative min-h-[420px] overflow-hidden rounded-lg border border-gray-200 bg-gray-100 shadow-sm">
-          <LiveVehicleMap pins={pins} depot={DEPOT} follow={selected} />
+          <LiveVehicleMap pins={pins} depot={DEPOT} />
         </div>
       </div>
     </div>
@@ -258,15 +258,15 @@ function MetricCard({ title, children }: { title: string; children: React.ReactN
   );
 }
 
-function RouteRow({ d, selected, onSelect, hasGps }: {
-  d: DriverProgress; selected: boolean; onSelect: () => void; hasGps: boolean;
+function RouteRow({ d, date, hasGps }: {
+  d: DriverProgress; date: string; hasGps: boolean;
 }) {
   const pct = d.totalCount > 0 ? Math.round((d.completedCount / d.totalCount) * 100) : 0;
   const st = statusOf(d);
   return (
-    <button onClick={onSelect}
-      className={"flex w-full items-center gap-3 border-b border-gray-100 px-3 py-2.5 text-left hover:bg-gray-50 " +
-        (selected ? "bg-blue-50" : "")}>
+    <Link
+      href={`/admin/progress/${d.driverId}?date=${date}`}
+      className="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-2.5 text-left hover:bg-blue-50">
       <div className="w-20 shrink-0">
         <div className="text-sm font-bold text-gray-900">{d.vehicleId ?? "—"}</div>
         <div className="text-[10px] text-gray-400">{d.companyName ?? "—"}</div>
@@ -288,6 +288,6 @@ function RouteRow({ d, selected, onSelect, hasGps }: {
         </div>
         <div className="mt-1 text-right text-[10px] text-gray-500">{d.completedCount}/{d.totalCount} 配送</div>
       </div>
-    </button>
+    </Link>
   );
 }
