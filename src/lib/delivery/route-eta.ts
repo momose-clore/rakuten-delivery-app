@@ -33,12 +33,13 @@ export interface RouteEtaInput {
  */
 export function predictRouteEta(items: RouteEtaInput[], now: Date = new Date()): EtaStatus[] {
   const pace = estimatePaceMin(items);
-  let remainingIdx = 0; // 未完了の並び順（1始まりに使う）
+  let remainingIdx = 0; // 未完了の並び順（1始まり）。到着予測の順番に使う。
   return items.map((it) => {
     if (it.deliveryStatus === "COMPLETED" || it.deliveryStatus === "SKIPPED") return "none";
-    const rem = minutesToDeadline(it.waveNo, now);
-    if (rem === null) return "none"; // Wave 不明
+    // 未完了は Wave 不明でも「前に控える件数」として時間を消費する→先にカウント。
     remainingIdx += 1;
+    const rem = minutesToDeadline(it.waveNo, now);
+    if (rem === null) return "none"; // Wave 不明は判定対象外（ただし件数には算入済み）
     if (rem < 0) return "late"; // 既に締切超過
     const etaMin = remainingIdx * pace; // この配送に到達するまでの見込み分数
     if (etaMin > rem) return "atRisk"; // 到達時には締切を超える見込み

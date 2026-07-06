@@ -110,8 +110,8 @@ export default async function DriverProgressDetailPage({
   const stops: RouteStop[] = assignments
     .map((a, i) => ({ a, e: etaStatuses[i] }))
     .filter(({ a }) => a.deliveryItem.lat != null && a.deliveryItem.lng != null)
-    .map(({ a, e }) => ({
-      seq: a.routeOrder ?? 0,
+    .map(({ a, e }, i) => ({
+      seq: a.routeOrder ?? i + 1,
       lat: a.deliveryItem.lat as number,
       lng: a.deliveryItem.lng as number,
       name: a.deliveryItem.customerName ?? null,
