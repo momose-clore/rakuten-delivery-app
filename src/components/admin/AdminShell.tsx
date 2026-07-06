@@ -70,6 +70,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/assignments", label: "割当", icon: ClipboardList },
       { href: "/admin/routes", label: "ルート確認", icon: MapPin },
       { href: "/admin/progress", label: "配送進捗", icon: TruckIcon },
+      { href: "/admin/vehicle-count", label: "台数管理", icon: BarChart3 },
       { href: "/admin/drivers", label: "ドライバー管理", icon: Users },
     ],
   },
