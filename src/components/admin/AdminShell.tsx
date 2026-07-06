@@ -32,6 +32,9 @@ import {
   ChevronDown,
   LogOut,
   UserCircle2,
+  Users,
+  Menu,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -67,6 +70,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/assignments", label: "割当", icon: ClipboardList },
       { href: "/admin/routes", label: "ルート確認", icon: MapPin },
       { href: "/admin/progress", label: "配送進捗", icon: TruckIcon },
+      { href: "/admin/drivers", label: "ドライバー管理", icon: Users },
     ],
   },
   {
@@ -97,6 +101,7 @@ function isItemActive(pathname: string, it: NavItem): boolean {
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const navRef = useRef<HTMLElement | null>(null);
 
   // ドロップダウン外クリックで閉じる
@@ -108,6 +113,14 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [openId]);
+
+  // ルート変更でメニューを閉じる（モバイルドロワー・PCドロップダウン。意図的な同期setState）
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setMobileOpen(false);
+    setOpenId(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [pathname]);
 
   const homeActive = isItemActive(pathname, HOME);
 
@@ -123,7 +136,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             CLORE <span className="font-normal text-gray-300">DELIVERY</span>
           </Link>
 
-          <nav ref={navRef} className="flex items-center">
+          <nav ref={navRef} className="hidden md:flex items-center">
             {/* ホーム（単独） */}
             <Link
               href={HOME.href}
@@ -209,14 +222,85 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               title="ログアウト"
-              className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] text-gray-200 hover:bg-white/10"
+              className="hidden md:flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] text-gray-200 hover:bg-white/10"
             >
               <LogOut size={16} />
               <span className="hidden sm:inline">ログアウト</span>
             </button>
+            {/* モバイル用ハンバーガー */}
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="md:hidden rounded-md p-2 text-gray-100 hover:bg-white/10"
+              aria-label="メニュー"
+            >
+              <Menu size={22} />
+            </button>
           </div>
         </div>
       </header>
+
+      {/* ===== モバイル用ドロワー ===== */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-[2000] md:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
+          <div className="absolute right-0 top-0 h-full w-72 max-w-[85%] overflow-y-auto bg-white shadow-xl">
+            <div className="flex items-center justify-between px-4 py-3 text-white" style={{ background: NAVY }}>
+              <span className="text-sm font-bold tracking-wider">メニュー</span>
+              <button onClick={() => setMobileOpen(false)} aria-label="閉じる" className="rounded-md p-1 hover:bg-white/10">
+                <X size={20} />
+              </button>
+            </div>
+            <nav className="py-2">
+              {/* ホーム */}
+              <Link
+                href={HOME.href}
+                className={
+                  "flex items-center gap-2 px-4 py-2.5 text-sm " +
+                  (homeActive ? "bg-blue-50 font-semibold text-blue-700" : "text-gray-700 hover:bg-gray-50")
+                }
+              >
+                <HOME.icon size={17} className="shrink-0" />
+                {HOME.label}
+              </Link>
+              {/* グループごとに見出し＋項目 */}
+              {GROUPS.map((g) => (
+                <div key={g.id} className="mt-1">
+                  <div className="flex items-center gap-1.5 px-4 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                    <g.icon size={13} /> {g.label}
+                  </div>
+                  {g.items.map((it) => {
+                    const ItemIcon = it.icon;
+                    const active = isItemActive(pathname, it);
+                    const cls =
+                      "flex items-center gap-2 px-4 py-2.5 text-sm " +
+                      (active ? "bg-blue-50 font-semibold text-blue-700" : "text-gray-700 hover:bg-gray-50");
+                    return it.external ? (
+                      <a key={it.href} href={it.href} target="_blank" rel="noopener noreferrer" className={cls} onClick={() => setMobileOpen(false)}>
+                        <ItemIcon size={17} className="shrink-0 text-gray-400" />
+                        <span className="flex-1">{it.label}</span>
+                        <ExternalLink size={13} className="shrink-0 text-gray-400" />
+                      </a>
+                    ) : (
+                      <Link key={it.href} href={it.href} className={cls}>
+                        <ItemIcon size={17} className={"shrink-0 " + (active ? "text-blue-600" : "text-gray-400")} />
+                        <span className="flex-1">{it.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ))}
+              {/* ログアウト */}
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="mt-2 flex w-full items-center gap-2 border-t border-gray-100 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <LogOut size={17} className="shrink-0 text-gray-400" />
+                ログアウト
+              </button>
+            </nav>
+          </div>
+        </div>
+      )}
 
       {/* ===== ページ本体 ===== */}
       <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
