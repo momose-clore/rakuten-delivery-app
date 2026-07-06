@@ -19,10 +19,18 @@ export default function VehicleRosterPage() {
     const res = await fetch(`/api/admin/vehicle-roster?date=${d}`);
     if (!res.ok) { setErr((await res.json().catch(() => ({}))).error ?? "取得に失敗しました"); return; }
     const body = await res.json();
-    setCandidates(body.candidates ?? []);
+    const cands: Candidate[] = body.candidates ?? [];
+    setCandidates(cands);
     const r: Row[] = (body.roster ?? []).map((x: { vehicleNo: string; driverId: string }) => ({ vehicleNo: x.vehicleNo, driverId: x.driverId }));
-    // 未設定なら 1〜4号車の空行を用意（今後増える分は「行を追加」で）
-    setRows(r.length ? r : [1, 2, 3, 4].map((n) => ({ vehicleNo: String(n), driverId: "" })));
+    if (r.length) { setRows(r); return; }
+    // 保存済み配置が無ければ、候補ドライバーの号車(vehicleId "N号車")から自動プリフィル
+    const seen = new Set<string>();
+    const prefill: Row[] = cands
+      .map((c) => ({ n: c.vehicleId?.match(/(\d+)\s*号車/)?.[1] ?? "", driverId: c.driverId }))
+      .filter((x) => x.n && !seen.has(x.n) && seen.add(x.n))
+      .sort((a, b) => Number(a.n) - Number(b.n))
+      .map((x) => ({ vehicleNo: x.n, driverId: x.driverId }));
+    setRows(prefill.length ? prefill : [1, 2, 3, 4].map((n) => ({ vehicleNo: String(n), driverId: "" })));
   }, []);
 
   useEffect(() => {
