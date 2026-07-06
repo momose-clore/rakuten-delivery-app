@@ -35,6 +35,7 @@ import {
   Users,
   Menu,
   X,
+  ShieldAlert,
   type LucideIcon,
 } from "lucide-react";
 
@@ -91,6 +92,14 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/extra-vehicle-requests", label: "増便申請", icon: PlusSquare },
       // 外部: CARIO（楽天）美女木シフトページ。新規タブで開く（CARIOログインが必要）。
       { href: "https://cario-app-two.vercel.app/manager/shifts", label: "CARIOシフト", icon: ExternalLink, external: true },
+    ],
+  },
+  {
+    id: "system",
+    label: "システム",
+    icon: ShieldAlert,
+    items: [
+      { href: "/admin/security", label: "セキュリティ", icon: ShieldAlert },
     ],
   },
 ];
