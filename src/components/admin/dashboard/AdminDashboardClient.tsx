@@ -136,7 +136,7 @@ export function AdminDashboardClient() {
       const cat = statusById.get(l.driverId);
       return {
         id: l.driverId,
-        label: l.vehicle,
+        label: l.name || l.vehicle,
         color: stale ? GRAY : (cat ? CAT_COLOR[cat] : BLUE),
         lat: l.lat,
         lng: l.lng,

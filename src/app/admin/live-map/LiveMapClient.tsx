@@ -152,7 +152,7 @@ export function LiveMapClient() {
     const stale = l.staleSec > STALE_SEC;
     return {
       id: l.driverId,
-      label: l.vehicle,
+      label: l.name || l.vehicle,
       color: stale ? STALE : FRESH,
       lat: l.lat,
       lng: l.lng,
