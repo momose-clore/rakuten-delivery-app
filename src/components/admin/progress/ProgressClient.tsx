@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { ProgressDriverCard } from "./ProgressDriverCard";
 import type { DriverProgress } from "@/types/progress";
+import { DEFAULT_PACE_MIN, clampPace, PACE_MIN, PACE_MAX } from "@/lib/delivery/route-eta";
 
 const WAVE_OPTIONS = ["", "W1", "W2", "W3", "W4", "W5", "W6"];
 
@@ -11,6 +12,7 @@ export function ProgressClient() {
   const [date, setDate] = useState(today);
   const [area, setArea] = useState("");
   const [waveNo, setWaveNo] = useState("");
+  const [pace, setPace] = useState(DEFAULT_PACE_MIN);
   const [drivers, setDrivers] = useState<DriverProgress[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -59,6 +61,14 @@ export function ProgressClient() {
             {WAVE_OPTIONS.map((w) => <option key={w} value={w}>{w || "すべて"}</option>)}
           </select>
         </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1" title="遅配予測に使う1件あたりの想定所要（配達＋移動）。完了3件以上の号車は実測を優先。">
+            所要(分/件)
+          </label>
+          <input type="number" min={PACE_MIN} max={PACE_MAX} value={pace}
+            onChange={(e) => setPace(clampPace(Number(e.target.value)))}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-20" />
+        </div>
         <button onClick={fetchProgress} disabled={loading}
           className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md disabled:opacity-50">
           {loading ? "取得中..." : "進捗を表示"}
@@ -103,7 +113,7 @@ export function ProgressClient() {
       {/* ドライバー別カード */}
       <div className="space-y-3">
         {drivers.map((d) => (
-          <ProgressDriverCard key={d.driverId} driver={d} date={date} />
+          <ProgressDriverCard key={d.driverId} driver={d} date={date} paceMin={pace} />
         ))}
         {drivers.length === 0 && !loading && (
           <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">

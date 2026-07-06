@@ -16,10 +16,16 @@ import { minutesToDeadline } from "@/lib/waves";
 
 export type EtaStatus = "onTime" | "soon" | "late" | "atRisk" | "none";
 
-const DEFAULT_PACE_MIN = 7; // 1配達あたりの平均所要（配達＋移動）の既定値
-const PACE_MIN = 3; // 実測ペースの下限クランプ
-const PACE_MAX = 20; // 実測ペースの上限クランプ
+export const DEFAULT_PACE_MIN = 7; // 1配達あたりの平均所要（配達＋移動）の既定値
+export const PACE_MIN = 3; // ペース下限（クランプ・UIの最小値）
+export const PACE_MAX = 20; // ペース上限（クランプ・UIの最大値）
 const SOON_THRESHOLD_MIN = 30;
+
+/** UI入力のペース値を安全な範囲に整える（不正/範囲外は既定へ寄せる） */
+export function clampPace(v: number | null | undefined): number {
+  if (v == null || !Number.isFinite(v)) return DEFAULT_PACE_MIN;
+  return Math.min(PACE_MAX, Math.max(PACE_MIN, Math.round(v)));
+}
 
 export interface RouteEtaInput {
   waveNo: string | null;
@@ -31,8 +37,12 @@ export interface RouteEtaInput {
  * route順に並んだ配送配列に対し、各要素の遅配リスク（EtaStatus）を返す。
  * items は route_order 昇順で渡すこと（到着順の前提）。
  */
-export function predictRouteEta(items: RouteEtaInput[], now: Date = new Date()): EtaStatus[] {
-  const pace = estimatePaceMin(items);
+export function predictRouteEta(
+  items: RouteEtaInput[],
+  now: Date = new Date(),
+  defaultPaceMin: number = DEFAULT_PACE_MIN,
+): EtaStatus[] {
+  const pace = estimatePaceMin(items, defaultPaceMin);
   let remainingIdx = 0; // 未完了の並び順（1始まり）。到着予測の順番に使う。
   return items.map((it) => {
     if (it.deliveryStatus === "COMPLETED" || it.deliveryStatus === "SKIPPED") return "none";
@@ -48,8 +58,12 @@ export function predictRouteEta(items: RouteEtaInput[], now: Date = new Date()):
   });
 }
 
-/** 当日の完了実績（completedAt）から1件あたり所要を推定。データ不足なら既定値。 */
-function estimatePaceMin(items: RouteEtaInput[]): number {
+/**
+ * 1件あたり所要(分)を決める。
+ * 当日の完了実績が3件以上あれば実測ペースを優先（より正確）。
+ * 実績不足のときは UI で調整された既定値 defaultPaceMin を使う。
+ */
+function estimatePaceMin(items: RouteEtaInput[], defaultPaceMin: number): number {
   const times = items
     .filter((it) => it.deliveryStatus === "COMPLETED" && it.completedAt)
     .map((it) => (it.completedAt as Date).getTime())
@@ -59,5 +73,5 @@ function estimatePaceMin(items: RouteEtaInput[]): number {
     const measured = spanMin / (times.length - 1);
     if (Number.isFinite(measured)) return Math.min(PACE_MAX, Math.max(PACE_MIN, measured));
   }
-  return DEFAULT_PACE_MIN;
+  return clampPace(defaultPaceMin);
 }

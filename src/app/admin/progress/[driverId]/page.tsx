@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { WAREHOUSE } from "@/lib/maps/warehouse";
 import { DriverRouteMap } from "@/components/admin/DriverRouteMap";
 import type { RouteStop } from "@/components/map/LiveVehicleMap";
-import { predictRouteEta, type EtaStatus } from "@/lib/delivery/route-eta";
+import { predictRouteEta, clampPace, type EtaStatus } from "@/lib/delivery/route-eta";
 
 /** 予測ステータス → 地図ピン色（late/atRisk=赤 / soon=橙 / それ以外=対象外） */
 function pinStatusOf(e: EtaStatus): "late" | "soon" | null {
@@ -33,12 +33,13 @@ export default async function DriverProgressDetailPage({
   searchParams,
 }: {
   params: Promise<{ driverId: string }>;
-  searchParams: Promise<{ date?: string }>;
+  searchParams: Promise<{ date?: string; pace?: string }>;
 }) {
   await requireAdmin();
 
   const { driverId } = await params;
-  const { date: dateParam } = await searchParams;
+  const { date: dateParam, pace: paceParam } = await searchParams;
+  const paceMin = clampPace(paceParam ? Number(paceParam) : undefined);
 
   const targetDate = dateParam ? new Date(dateParam) : new Date();
   targetDate.setHours(0, 0, 0, 0);
@@ -101,6 +102,7 @@ export default async function DriverProgressDetailPage({
       completedAt: a.deliveryItem.updatedAt,
     })),
     now,
+    paceMin,
   );
   const lateCount = etaStatuses.filter((e) => e === "late").length;
   const atRiskCount = etaStatuses.filter((e) => e === "atRisk").length;
@@ -140,17 +142,32 @@ export default async function DriverProgressDetailPage({
             <span>号車 {driver.vehicleId ?? "—"}</span>
           </div>
         </div>
-        <form className="shrink-0">
-          <label className="block text-xs text-gray-500 mb-1">配送日</label>
-          <input
-            type="date"
-            name="date"
-            defaultValue={dateStr}
-            className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+        <form className="shrink-0 flex items-end gap-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">配送日</label>
+            <input
+              type="date"
+              name="date"
+              defaultValue={dateStr}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1" title="遅配予測に使う1件あたりの想定所要（配達＋移動）。完了3件以上ある時は実測を優先。">
+              所要(分/件)
+            </label>
+            <input
+              type="number"
+              name="pace"
+              min={3}
+              max={20}
+              defaultValue={paceMin}
+              className="w-20 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
           <button
             type="submit"
-            className="ml-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md"
+            className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md"
           >
             表示
           </button>

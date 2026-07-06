@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { DriverProgress, DeliveryProgress } from "@/types/progress";
+import { predictRouteEta, DEFAULT_PACE_MIN } from "@/lib/delivery/route-eta";
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   ASSIGNED:      { label: "未完了",     className: "bg-blue-100 text-blue-700" },
@@ -17,12 +18,25 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 interface Props {
   driver: DriverProgress;
   date: string;
+  /** 遅配予測の1件あたり所要(分)。一覧のペース入力から流す。既定7分。 */
+  paceMin?: number;
 }
 
-export function ProgressDriverCard({ driver, date }: Props) {
+export function ProgressDriverCard({ driver, date, paceMin = DEFAULT_PACE_MIN }: Props) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<DeliveryProgress[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // 折りたたみ詳細を開いて読み込んだ配送に対し、遅配を前向き予測（route順・実ペース優先）
+  const etaStatuses = predictRouteEta(
+    items.map((it) => ({
+      waveNo: it.waveNo,
+      deliveryStatus: it.deliveryStatus,
+      completedAt: it.updatedAt ? new Date(it.updatedAt) : null,
+    })),
+    new Date(),
+    paceMin,
+  );
 
   const completionRate = driver.totalCount > 0
     ? Math.round((driver.completedCount / driver.totalCount) * 100)
@@ -50,7 +64,7 @@ export function ProgressDriverCard({ driver, date }: Props) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <Link
-              href={`/admin/progress/${driver.driverId}?date=${date}`}
+              href={`/admin/progress/${driver.driverId}?date=${date}&pace=${paceMin}`}
               className="font-semibold text-gray-900 hover:text-blue-700 hover:underline"
             >
               {driver.driverName}
@@ -87,7 +101,7 @@ export function ProgressDriverCard({ driver, date }: Props) {
             {open ? "閉じる" : "詳細"}
           </button>
           <Link
-            href={`/admin/progress/${driver.driverId}?date=${date}`}
+            href={`/admin/progress/${driver.driverId}?date=${date}&pace=${paceMin}`}
             className="text-xs px-2 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50"
           >
             個別ページ
@@ -129,10 +143,11 @@ export function ProgressDriverCard({ driver, date }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {items.map((item) => {
+                {items.map((item, idx) => {
                   const sc = STATUS_CONFIG[item.deliveryStatus] ?? STATUS_CONFIG.ASSIGNED;
+                  const e = etaStatuses[idx];
                   return (
-                    <tr key={item.deliveryItemId} className="hover:bg-gray-50">
+                    <tr key={item.deliveryItemId} className={"hover:bg-gray-50 " + (e === "late" || e === "atRisk" ? "bg-red-50/60" : "")}>
                       <td className="px-3 py-2 font-bold text-gray-700">{item.routeOrder ?? "—"}</td>
                       <td className="px-3 py-2 font-mono">{item.dispatchKey ?? "—"}</td>
                       <td className="px-3 py-2">{item.waveNo ?? "—"}</td>
@@ -142,6 +157,15 @@ export function ProgressDriverCard({ driver, date }: Props) {
                         <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sc.className}`}>
                           {sc.label}
                         </span>
+                        {e === "late" && (
+                          <span className="ml-1 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">遅配</span>
+                        )}
+                        {e === "atRisk" && (
+                          <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-700">遅配見込み</span>
+                        )}
+                        {e === "soon" && (
+                          <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">締切間近</span>
+                        )}
                       </td>
                       <td className="px-3 py-2 text-gray-400">
                         {new Date(item.updatedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
