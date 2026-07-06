@@ -515,3 +515,21 @@ model GeocodeCache {
 
   @@map("geocode_cache")
 }
+
+// 当日の号車配置（号車→ドライバー・日替わり）。
+// 例: 2026-07-06 は 1号車=牧田 だが、翌日 牧田休みなら 1号車=飯田 のようにシフトで変わる。
+// 号車番号(1〜4…今後増える)は固定せず可変。自動割当のベースに使う。
+// DriverLocation と同様に Driver への relation は張らず driverId 文字列で持つ（既存モデル非編集＝衝突回避）。
+model VehicleRoster {
+  id        String   @id @default(cuid())
+  workDate  DateTime @map("work_date") @db.Date
+  vehicleNo String   @map("vehicle_no")   // デポの号車番号 "1","2",…
+  driverId  String   @map("driver_id")     // Driver.id（relation は張らない）
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([workDate, vehicleNo], name: "workDate_vehicleNo")
+  @@index([workDate])
+  @@map("vehicle_rosters")
+}
