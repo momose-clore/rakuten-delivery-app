@@ -8,6 +8,7 @@ export default function DriverCameraPage() {
       doneLabel="本日の配送を見る →"
       doneNote="配送表を読み込み、本日の配送に反映しました。"
       backHref="/driver/today"
+      autoStart
     />
   );
 }

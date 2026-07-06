@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { normalizeToJpegBlob } from "@/lib/image/to-jpeg";
@@ -21,13 +21,16 @@ export function MobileCameraImportPage({
   doneLabel = "確認画面へ →",
   doneNote = "OCR確認画面で内容を確認してください",
   backHref,
+  autoStart = false,
 }: {
   doneHref?: string;
   doneLabel?: string;
   doneNote?: string;
   backHref?: string;
+  /** true: ガイド/モード選択を飛ばし、開いたら即カメラ起動（紙前提のドライバー用） */
+  autoStart?: boolean;
 } = {}) {
-  const [step, setStep] = useState<Step>("guide");
+  const [step, setStep] = useState<Step>(autoStart ? "capture" : "guide");
   const [captureMode, setCaptureMode] = useState<CaptureMode>("paper");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -35,6 +38,15 @@ export function MobileCameraImportPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // autoStart: 開いたら即ネイティブカメラを起動（紙前提）。ブラウザが自動起動を弾いた場合も
+  // capture画面の大きな撮影ボタンがすぐ押せる（1タップ）ようフォールバック。
+  useEffect(() => {
+    if (autoStart) {
+      const t = setTimeout(() => fileInputRef.current?.click(), 250);
+      return () => clearTimeout(t);
+    }
+  }, [autoStart]);
 
   // 撮影 → そのままアップロード（GeminiOCRは斜め/横向きも読めるため四隅補正は不要）
   function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
