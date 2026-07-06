@@ -2,16 +2,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/prisma";
-import { deliveryTimingStatus } from "@/lib/waves";
 import { WAREHOUSE } from "@/lib/maps/warehouse";
 import { DriverRouteMap } from "@/components/admin/DriverRouteMap";
 import type { RouteStop } from "@/components/map/LiveVehicleMap";
+import { predictRouteEta, type EtaStatus } from "@/lib/delivery/route-eta";
 
-/** 未完了配送の遅配ステータス → 地図/バッジ用（late=赤 / soon=橙 / null=対象外） */
-function timingOf(deliveryStatus: string, waveNo: string | null, now: Date): "late" | "soon" | null {
-  if (deliveryStatus === "COMPLETED" || deliveryStatus === "SKIPPED") return null;
-  const s = deliveryTimingStatus(waveNo, now);
-  return s === "LATE" ? "late" : s === "SOON" ? "soon" : null;
+/** 予測ステータス → 地図ピン色（late/atRisk=赤 / soon=橙 / それ以外=対象外） */
+function pinStatusOf(e: EtaStatus): "late" | "soon" | null {
+  if (e === "late" || e === "atRisk") return "late";
+  if (e === "soon") return "soon";
+  return null;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -91,22 +91,32 @@ export default async function DriverProgressDetailPage({
   const inProgress = total - completed - absent - returned - skipped;
   const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-  // 遅配判定（Wave時間帯 vs 現在時刻。未完了のみ対象）
+  // 遅配の前向き予測：残件数×1件あたり所要 で各配送への到着を予測し、Wave締切と突き合わせ。
+  // late=既に超過 / atRisk=配りきれない見込み / soon=締切間近 /（route順で判定）
   const now = new Date();
-  const timings = assignments.map((a) => timingOf(a.deliveryItem.deliveryStatus, a.deliveryItem.waveNo, now));
-  const lateCount = timings.filter((t) => t === "late").length;
-  const soonCount = timings.filter((t) => t === "soon").length;
+  const etaStatuses = predictRouteEta(
+    assignments.map((a) => ({
+      waveNo: a.deliveryItem.waveNo,
+      deliveryStatus: a.deliveryItem.deliveryStatus,
+      completedAt: a.deliveryItem.updatedAt,
+    })),
+    now,
+  );
+  const lateCount = etaStatuses.filter((e) => e === "late").length;
+  const atRiskCount = etaStatuses.filter((e) => e === "atRisk").length;
+  const soonCount = etaStatuses.filter((e) => e === "soon").length;
 
-  // 地図の配送先ピン（座標があるものだけ）。遅配ステータスで色分け（late=赤 / soon=橙）。
+  // 地図の配送先ピン（座標があるものだけ）。予測ステータスで色分け（late/atRisk=赤 / soon=橙）。
   const stops: RouteStop[] = assignments
-    .filter((a) => a.deliveryItem.lat != null && a.deliveryItem.lng != null)
-    .map((a, i) => ({
-      seq: a.routeOrder ?? i + 1,
+    .map((a, i) => ({ a, e: etaStatuses[i] }))
+    .filter(({ a }) => a.deliveryItem.lat != null && a.deliveryItem.lng != null)
+    .map(({ a, e }) => ({
+      seq: a.routeOrder ?? 0,
       lat: a.deliveryItem.lat as number,
       lng: a.deliveryItem.lng as number,
       name: a.deliveryItem.customerName ?? null,
       address: a.deliveryItem.address ?? null,
-      status: timingOf(a.deliveryItem.deliveryStatus, a.deliveryItem.waveNo, now),
+      status: pinStatusOf(e),
     }));
   const depot = { name: WAREHOUSE.name, lat: WAREHOUSE.lat, lng: WAREHOUSE.lng, subtitle: WAREHOUSE.address };
 
@@ -172,17 +182,20 @@ export default async function DriverProgressDetailPage({
         </div>
       )}
 
-      {/* 遅配アラート（時間帯を過ぎる/超過見込みの未完了配送） */}
-      {(lateCount > 0 || soonCount > 0) && (
+      {/* 遅配アラート（超過済み＋配りきれない見込みを先読み） */}
+      {(lateCount > 0 || atRiskCount > 0 || soonCount > 0) && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm">
           {lateCount > 0 && (
             <span className="font-bold text-red-700">⚠ 遅配 {lateCount}件</span>
+          )}
+          {atRiskCount > 0 && (
+            <span className="font-bold text-red-600">遅配見込み {atRiskCount}件</span>
           )}
           {soonCount > 0 && (
             <span className="font-semibold text-amber-700">締切間近 {soonCount}件</span>
           )}
           <span className="text-xs text-gray-500">
-            Wave時間帯（配送時刻）を過ぎている／間に合わない見込みの未完了配送です
+            現在のペース（残件×1件あたり所要）で Wave時間帯（配送時刻）に間に合わない見込みを先読み表示
           </span>
         </div>
       )}
@@ -212,12 +225,12 @@ export default async function DriverProgressDetailPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {assignments.map((a) => {
+              {assignments.map((a, idx) => {
                 const item = a.deliveryItem;
                 const sc = statusOf(item.deliveryStatus);
-                const t = timingOf(item.deliveryStatus, item.waveNo, now);
+                const e = etaStatuses[idx];
                 return (
-                  <tr key={item.id} className={"hover:bg-gray-50 " + (t === "late" ? "bg-red-50/60" : "")}>
+                  <tr key={item.id} className={"hover:bg-gray-50 " + (e === "late" || e === "atRisk" ? "bg-red-50/60" : "")}>
                     <td className="px-3 py-2 font-bold text-gray-700">{a.routeOrder ?? "—"}</td>
                     <td className="px-3 py-2 font-mono">{item.dispatchKey ?? "—"}</td>
                     <td className="px-3 py-2">{item.waveNo ?? "—"}</td>
@@ -227,10 +240,13 @@ export default async function DriverProgressDetailPage({
                       <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sc.className}`}>
                         {sc.label}
                       </span>
-                      {t === "late" && (
+                      {e === "late" && (
                         <span className="ml-1 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">遅配</span>
                       )}
-                      {t === "soon" && (
+                      {e === "atRisk" && (
+                        <span className="ml-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-bold text-red-700">遅配見込み</span>
+                      )}
+                      {e === "soon" && (
                         <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">締切間近</span>
                       )}
                     </td>
