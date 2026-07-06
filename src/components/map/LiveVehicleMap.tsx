@@ -146,12 +146,16 @@ export function LiveVehicleMap({
   const stopMarkersRef = useRef<LeafletMarker[]>([]); // 配送先ピン（順番＋宛名）
   const fittedRef = useRef(false); // 初回自動フィット済みか
 
-  // 全号車＋拠点が収まる画角に合わせる
+  // 拠点＋号車＋配送先が収まる画角に合わせる
   const fitAll = () => {
     const L = getLeaflet();
     const map = mapRef.current;
     if (!L || !map) return;
-    const coords: LatLng[] = [[depot.lat, depot.lng], ...pins.map((p) => [p.lat, p.lng] as LatLng)];
+    const coords: LatLng[] = [
+      [depot.lat, depot.lng],
+      ...pins.map((p) => [p.lat, p.lng] as LatLng),
+      ...(routeStops ?? []).map((s) => [s.lat, s.lng] as LatLng),
+    ];
     map.fitBounds(L.latLngBounds(coords), { padding: [40, 40], maxZoom: 15 });
   };
 

@@ -49,7 +49,12 @@ export function ProgressDriverCard({ driver, date }: Props) {
       <div className="px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900">{driver.driverName}</span>
+            <Link
+              href={`/admin/progress/${driver.driverId}?date=${date}`}
+              className="font-semibold text-gray-900 hover:text-blue-700 hover:underline"
+            >
+              {driver.driverName}
+            </Link>
             <span className="text-xs text-gray-500">{driver.companyName ?? "—"}</span>
             <span className="text-xs text-gray-500">{driver.area ?? "—"}</span>
           </div>

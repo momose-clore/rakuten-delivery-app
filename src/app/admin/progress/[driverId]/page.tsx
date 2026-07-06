@@ -2,6 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/permissions";
 import { prisma } from "@/lib/prisma";
+import { deliveryTimingStatus } from "@/lib/waves";
+import { WAREHOUSE } from "@/lib/maps/warehouse";
+import { DriverRouteMap } from "@/components/admin/DriverRouteMap";
+import type { RouteStop } from "@/components/map/LiveVehicleMap";
+
+/** 未完了配送の遅配ステータス → 地図/バッジ用（late=赤 / soon=橙 / null=対象外） */
+function timingOf(deliveryStatus: string, waveNo: string | null, now: Date): "late" | "soon" | null {
+  if (deliveryStatus === "COMPLETED" || deliveryStatus === "SKIPPED") return null;
+  const s = deliveryTimingStatus(waveNo, now);
+  return s === "LATE" ? "late" : s === "SOON" ? "soon" : null;
+}
 
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   ASSIGNED:      { label: "未完了",     className: "bg-blue-100 text-blue-700" },
@@ -58,6 +69,9 @@ export default async function DriverProgressDetailPage({
           dispatchKey: true,
           waveNo: true,
           address: true,
+          customerName: true,
+          lat: true,
+          lng: true,
           totalCount: true,
           deliveryStatus: true,
           updatedAt: true,
@@ -76,6 +90,25 @@ export default async function DriverProgressDetailPage({
   const skipped = count(["SKIPPED"]);
   const inProgress = total - completed - absent - returned - skipped;
   const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  // 遅配判定（Wave時間帯 vs 現在時刻。未完了のみ対象）
+  const now = new Date();
+  const timings = assignments.map((a) => timingOf(a.deliveryItem.deliveryStatus, a.deliveryItem.waveNo, now));
+  const lateCount = timings.filter((t) => t === "late").length;
+  const soonCount = timings.filter((t) => t === "soon").length;
+
+  // 地図の配送先ピン（座標があるものだけ）。遅配ステータスで色分け（late=赤 / soon=橙）。
+  const stops: RouteStop[] = assignments
+    .filter((a) => a.deliveryItem.lat != null && a.deliveryItem.lng != null)
+    .map((a, i) => ({
+      seq: a.routeOrder ?? i + 1,
+      lat: a.deliveryItem.lat as number,
+      lng: a.deliveryItem.lng as number,
+      name: a.deliveryItem.customerName ?? null,
+      address: a.deliveryItem.address ?? null,
+      status: timingOf(a.deliveryItem.deliveryStatus, a.deliveryItem.waveNo, now),
+    }));
+  const depot = { name: WAREHOUSE.name, lat: WAREHOUSE.lat, lng: WAREHOUSE.lng, subtitle: WAREHOUSE.address };
 
   return (
     <div className="space-y-5">
@@ -139,6 +172,30 @@ export default async function DriverProgressDetailPage({
         </div>
       )}
 
+      {/* 遅配アラート（時間帯を過ぎる/超過見込みの未完了配送） */}
+      {(lateCount > 0 || soonCount > 0) && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm">
+          {lateCount > 0 && (
+            <span className="font-bold text-red-700">⚠ 遅配 {lateCount}件</span>
+          )}
+          {soonCount > 0 && (
+            <span className="font-semibold text-amber-700">締切間近 {soonCount}件</span>
+          )}
+          <span className="text-xs text-gray-500">
+            Wave時間帯（配送時刻）を過ぎている／間に合わない見込みの未完了配送です
+          </span>
+        </div>
+      )}
+
+      {/* 配送先マップ（配達先ピン＋道なりルート・遅配は赤ピン） */}
+      <div>
+        <div className="mb-1.5 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-700">配送先マップ</h2>
+          <span className="text-xs text-gray-400">番号＝配送順 ／ 赤＝遅配 ・ 橙＝締切間近</span>
+        </div>
+        <DriverRouteMap driverId={driverId} date={dateStr} stops={stops} depot={depot} />
+      </div>
+
       {/* 明細テーブル */}
       <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         {assignments.length === 0 ? (
@@ -158,8 +215,9 @@ export default async function DriverProgressDetailPage({
               {assignments.map((a) => {
                 const item = a.deliveryItem;
                 const sc = statusOf(item.deliveryStatus);
+                const t = timingOf(item.deliveryStatus, item.waveNo, now);
                 return (
-                  <tr key={item.id} className="hover:bg-gray-50">
+                  <tr key={item.id} className={"hover:bg-gray-50 " + (t === "late" ? "bg-red-50/60" : "")}>
                     <td className="px-3 py-2 font-bold text-gray-700">{a.routeOrder ?? "—"}</td>
                     <td className="px-3 py-2 font-mono">{item.dispatchKey ?? "—"}</td>
                     <td className="px-3 py-2">{item.waveNo ?? "—"}</td>
@@ -169,6 +227,12 @@ export default async function DriverProgressDetailPage({
                       <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${sc.className}`}>
                         {sc.label}
                       </span>
+                      {t === "late" && (
+                        <span className="ml-1 rounded bg-red-600 px-1.5 py-0.5 text-xs font-bold text-white">遅配</span>
+                      )}
+                      {t === "soon" && (
+                        <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">締切間近</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-gray-400">
                       {new Date(item.updatedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
