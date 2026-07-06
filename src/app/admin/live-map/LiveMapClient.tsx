@@ -13,8 +13,17 @@ import { WAREHOUSE } from "@/lib/maps/warehouse";
 
 const POLL_MS = 30_000; // 30秒ポーリング
 const STALE_SEC = 90; // これを超えて更新が無ければ「古い」扱い
-const FRESH = "#2f6fdb";
 const STALE = "#9ca3af";
+// ドライバーごとの色分け（driverId をハッシュしてパレットから選ぶ＝毎回同じ色）
+const DRIVER_PALETTE = [
+  "#2f6fdb", "#e0245e", "#157347", "#b8923f", "#7c3aed", "#0891b2",
+  "#ea580c", "#be185d", "#0d9488", "#4f46e5", "#ca8a04", "#c026d3",
+];
+function colorForDriver(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return DRIVER_PALETTE[h % DRIVER_PALETTE.length];
+}
 
 const DEPOT = {
   name: WAREHOUSE.name,
@@ -152,8 +161,8 @@ export function LiveMapClient() {
     const stale = l.staleSec > STALE_SEC;
     return {
       id: l.driverId,
-      label: l.name || l.vehicle,
-      color: stale ? STALE : FRESH,
+      label: l.vehicle || l.name,
+      color: stale ? STALE : colorForDriver(l.driverId),
       lat: l.lat,
       lng: l.lng,
       stale,
@@ -250,7 +259,7 @@ export function LiveMapClient() {
                 >
                   <span
                     className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
-                    style={{ background: stale ? STALE : FRESH }}
+                    style={{ background: stale ? STALE : colorForDriver(l.driverId) }}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-bold text-gray-900">{l.vehicle}</span>
