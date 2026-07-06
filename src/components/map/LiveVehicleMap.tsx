@@ -105,11 +105,16 @@ function escapeHtml(s: string): string {
 }
 
 function pinIcon(L: LeafletStatic, label: string, color: string, stale: boolean) {
+  // ラベル幅を概算（CJK≒12px / 半角≒7px）してアイコンサイズを自動化＝見切れ防止。中央寄せ。
+  let textPx = 0;
+  for (const ch of label) textPx += /[\x00-\xff]/.test(ch) ? 7 : 12;
+  const w = Math.max(56, Math.round(textPx + 22));
+  const h = 24;
   return L.divIcon({
     className: "",
-    html: `<div style="display:flex;align-items:center;padding:2px 7px;border-radius:9999px;background:${color};color:#fff;font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.4);border:1.5px solid #fff;opacity:${stale ? 0.45 : 1};">${label}</div>`,
-    iconSize: [52, 20],
-    iconAnchor: [26, 10],
+    html: `<div style="display:flex;align-items:center;justify-content:center;height:${h}px;padding:0 10px;border-radius:9999px;background:${color};color:#fff;font-size:12px;font-weight:700;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.5);border:1.5px solid #fff;opacity:${stale ? 0.5 : 1};">${label}</div>`,
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h / 2],
   });
 }
 
