@@ -183,6 +183,7 @@ export async function GET() {
       lat: override?.lat ?? di.lat,
       lng: override?.lng ?? di.lng,
       deliveryStatus: di.deliveryStatus,
+      deliveredAt: di.deliveredAt ? di.deliveredAt.toISOString() : null,
       noMisdelivery: di.noMisdelivery,
       hasOverride: !!override,
       entranceMemo:  override?.entranceMemo ?? null,

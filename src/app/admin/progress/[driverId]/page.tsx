@@ -75,6 +75,7 @@ export default async function DriverProgressDetailPage({
           lng: true,
           totalCount: true,
           deliveryStatus: true,
+          deliveredAt: true,
           updatedAt: true,
         },
       },
@@ -99,7 +100,7 @@ export default async function DriverProgressDetailPage({
     assignments.map((a) => ({
       waveNo: a.deliveryItem.waveNo,
       deliveryStatus: a.deliveryItem.deliveryStatus,
-      completedAt: a.deliveryItem.updatedAt,
+      completedAt: a.deliveryItem.deliveredAt ?? a.deliveryItem.updatedAt,
     })),
     now,
     paceMin,
@@ -236,7 +237,7 @@ export default async function DriverProgressDetailPage({
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr>
-                {["順", "配車No", "W番号", "住所", "数量", "ステータス", "更新"].map((h) => (
+                {["順", "配車No", "W番号", "住所", "数量", "ステータス", "完了時刻"].map((h) => (
                   <th key={h} className="px-3 py-2 text-left font-medium text-gray-500">{h}</th>
                 ))}
               </tr>
@@ -267,8 +268,14 @@ export default async function DriverProgressDetailPage({
                         <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">締切間近</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-gray-400">
-                      {new Date(item.updatedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+                    <td className="px-3 py-2">
+                      {item.deliveredAt ? (
+                        <span className="font-semibold text-green-700">
+                          {new Date(item.deliveredAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
                     </td>
                   </tr>
                 );

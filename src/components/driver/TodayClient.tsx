@@ -40,6 +40,7 @@ interface ApiItem {
   lat: number | null;
   lng: number | null;
   deliveryStatus: string;
+  deliveredAt?: string | null;
   noMisdelivery?: boolean;
   follow?: { vehicle: string; company: string; driverName: string } | null;
   hasOverride?: boolean;
@@ -112,7 +113,8 @@ export function TodayClient() {
       body: JSON.stringify({ status: "COMPLETED" }),
     });
     if (res.ok) {
-      setItems((prev) => prev.map((i) => (i.deliveryItemId === deliveryItemId ? { ...i, deliveryStatus: "COMPLETED" } : i)));
+      const now = new Date().toISOString();
+      setItems((prev) => prev.map((i) => (i.deliveryItemId === deliveryItemId ? { ...i, deliveryStatus: "COMPLETED", deliveredAt: now } : i)));
     } else {
       setToast("完了の更新に失敗しました");
     }
@@ -402,7 +404,12 @@ function DeliveryCard({ item, current, onComplete, onToggleNoMis, onDelete, onEd
           <p className="text-[40px] font-mono font-black text-white leading-none tracking-tight">{fullKey(item)}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-[11px] font-bold text-white px-2.5 py-1 rounded-full" style={{ background: pill.bg === NAVY ? "rgba(255,255,255,0.2)" : pill.bg }}>{pill.icon} {pill.label}</span>
+          <span className="text-[11px] font-bold text-white px-2.5 py-1 rounded-full" style={{ background: pill.bg === NAVY ? "rgba(255,255,255,0.2)" : pill.bg }}>
+            {pill.icon} {pill.label}
+            {item.deliveryStatus === "COMPLETED" && item.deliveredAt && (
+              <span className="ml-1 font-mono font-black">{new Date(item.deliveredAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>
+            )}
+          </span>
           {onDelete && !confirmDel && (
             <button onClick={() => setConfirmDel(true)} aria-label="この配送を削除"
               className="p-1.5 rounded-lg bg-white/15 text-white/90 active:scale-95 transition">
