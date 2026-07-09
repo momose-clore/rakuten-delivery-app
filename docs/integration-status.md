@@ -416,6 +416,8 @@ CARIOへ渡す**連携仕様書 兼 依頼書**を作成（両方向・全エン
 - **増便申請**：(A)LINE増便グループ受領 / (B)`GET /api/external/extra-vehicle-requests`＋`/ack` pull のどちらか選択。
 - 実装は稼働・本番トークン設定済み。**CARIO側の運用有効化＋数点の仕様確認が残**（詳細はPDF/`docs/cario-integration.md`）。
 - ※関連の当アプリ実装は γ 担当（`api/external/*` の crew-reports/extra-vehicle は増便/LINE担当実装、CARIO受信は γ）。
+- ✅ **2026-07-09：PDFはrikuがCARIOへ送付済み**。ボールはCARIO側（pull→LINE投稿の有効化・増便受領方式・各確認）。
+- 🟡 **PDF未記載の追加確認（rikuが口頭でCARIOへ）**：**crew-reports連携後、ドライバーのCARIO側「出退勤・終了連絡」は不要（当アプリ一本化）か／併用か。出退勤が勤怠・給与用途の場合の扱い。** ← 二重報告回避のため運用を握る。CARIO返答待ち。
 
 ## 運用上の注意（共有事項）
 
