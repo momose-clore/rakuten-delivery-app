@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import type { ExtraVehicleRequestDTO } from "@/types/extra-vehicle-request";
+import type { ExtraVehicleRequestDTO, AdditionalDriver } from "@/types/extra-vehicle-request";
 import { waveReasonVariants } from "@/lib/extra-vehicle/reason-templates";
 
 interface DriverOption { id: string; name: string }
@@ -25,6 +25,7 @@ export function ExtraVehicleRequestForm({ onCreated, defaultDepot = "美女木�
   const [vehicleCount, setVehicleCount] = useState(1);
   const [driverSel, setDriverSel] = useState("");
   const [driverOther, setDriverOther] = useState("");
+  const [additionalDrivers, setAdditionalDrivers] = useState<AdditionalDriver[]>([]);
   const [reason, setReason] = useState("");
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
   const [areasByWave, setAreasByWave] = useState<Record<string, string[]>>({});
@@ -55,6 +56,16 @@ export function ExtraVehicleRequestForm({ onCreated, defaultDepot = "美女木�
     setWaves((prev) => (prev.includes(w) ? prev.filter((x) => x !== w) : [...prev, w].sort((a, b) => a - b)));
   }
 
+  function addAdditional() {
+    setAdditionalDrivers((prev) => [...prev, { name: "", assign: "" }]);
+  }
+  function updateAdditional(i: number, patch: Partial<AdditionalDriver>) {
+    setAdditionalDrivers((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
+  }
+  function removeAdditional(i: number) {
+    setAdditionalDrivers((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -77,6 +88,7 @@ export function ExtraVehicleRequestForm({ onCreated, defaultDepot = "美女木�
             waveNo: `W${w}`,
             vehicleCount,
             assignedDriverName: driverName || null,
+            additionalDrivers: additionalDrivers.filter((d) => d.name.trim()),
             reason: reason.trim(),
           }),
         });
@@ -93,6 +105,7 @@ export function ExtraVehicleRequestForm({ onCreated, defaultDepot = "美女木�
       setWaves([]);
       setVehicleCount(1);
       setReason("");
+      setAdditionalDrivers([]);
     } catch {
       setError("通信に失敗しました");
     } finally {
@@ -172,6 +185,34 @@ export function ExtraVehicleRequestForm({ onCreated, defaultDepot = "美女木�
           <input type="text" value={driverOther} onChange={(e) => setDriverOther(e.target.value)}
             placeholder="ドライバー名を入力（例: 石毛）" className={`${inputCls} mt-2`} />
         )}
+      </div>
+
+      {/* 追加ドライバー（複数行：名前＋担当便/号車） */}
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <label className={`${labelCls} mb-0`}>追加ドライバー（任意）</label>
+          <button type="button" onClick={addAdditional}
+            className="text-xs px-2 py-1 border border-blue-300 text-blue-700 rounded hover:bg-blue-50">＋ 追加</button>
+        </div>
+        {additionalDrivers.length === 0 ? (
+          <p className="text-xs text-gray-400">「＋追加」で、増便に充てるドライバーと担当便/号車を足せます（例: 深井奨之／6w(12号車)）。報告文の「・追加ドライバー」欄に反映されます。</p>
+        ) : (
+          <div className="space-y-2">
+            {additionalDrivers.map((d, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input list="ev-add-driver-list" value={d.name} onChange={(e) => updateAdditional(i, { name: e.target.value })}
+                  placeholder="ドライバー名（例: 深井奨之）" className={`${inputCls} flex-1`} />
+                <input value={d.assign} onChange={(e) => updateAdditional(i, { assign: e.target.value })}
+                  placeholder="担当便/号車（例: 6w(12号車)）" className={`${inputCls} flex-1`} />
+                <button type="button" onClick={() => removeAdditional(i)}
+                  className="shrink-0 px-2 py-2 text-gray-400 hover:text-red-600" aria-label="削除">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <datalist id="ev-add-driver-list">
+          {drivers.map((dr) => <option key={dr.id} value={dr.name} />)}
+        </datalist>
       </div>
 
       {/* 申請理由（テンプレート＋編集可） */}

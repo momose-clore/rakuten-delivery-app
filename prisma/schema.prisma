@@ -462,6 +462,7 @@ model ExtraVehicleRequest {
   waveNo             String    @map("wave_no")                  // 該当便（例: 6w）
   vehicleCount       Int       @default(1) @map("vehicle_count")// 台数（例: 1台）
   assignedDriverName String?   @map("assigned_driver_name")     // 割当先（例: 石毛）
+  additionalDrivers  String?   @map("additional_drivers")       // 追加ドライバー（JSON: [{name, assign}]。例: 深井奨之 6w(12号車)）
   reason             String                                     // 申請理由（自由記述・長文）
   status             String    @default("pending")              // pending|approved|rejected
   createdByUserId    String    @map("created_by_user_id")       // 申請者(User.id)

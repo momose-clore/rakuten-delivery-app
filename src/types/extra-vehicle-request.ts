@@ -5,6 +5,12 @@ export type ExtraVehicleRequestStatus = "pending" | "approved" | "rejected";
 export type CarioSyncStatus = "not_sent" | "pending" | "sent" | "failed";
 export type RequesterRole = "ADMIN" | "DRIVER";
 
+// 追加ドライバー1件（例: name="深井奨之", assign="6w(12号車)"）
+export interface AdditionalDriver {
+  name: string;
+  assign: string; // 担当便/号車（自由記述）
+}
+
 // API レスポンス用 DTO（個人情報を含む申請理由は本人/管理者のみが閲覧）
 export interface ExtraVehicleRequestDTO {
   id: string;
@@ -13,6 +19,7 @@ export interface ExtraVehicleRequestDTO {
   waveNo: string;
   vehicleCount: number;
   assignedDriverName: string | null;
+  additionalDrivers: AdditionalDriver[];
   reason: string;
   status: ExtraVehicleRequestStatus;
   createdByRole: RequesterRole;
@@ -31,6 +38,7 @@ export interface ExtraVehicleRequestInput {
   waveNo: string;
   vehicleCount: number;
   assignedDriverName?: string | null;
+  additionalDrivers?: AdditionalDriver[];
   reason: string;
 }
 

@@ -15,12 +15,15 @@
 //   申請理由
 //   〜〜
 
+import type { AdditionalDriver } from "@/types/extra-vehicle-request";
+
 export interface ExtraVehicleReportFields {
   requestDate: string; // YYYY-MM-DD
   depot: string;
   waveNo: string;
   vehicleCount: number;
   assignedDriverName: string | null;
+  additionalDrivers?: AdditionalDriver[];
   reason: string;
 }
 
@@ -56,7 +59,7 @@ export function formatVehicleLine(vehicleCount: number, assignedDriverName: stri
 
 /** 専用グループへ送る報告本文を生成する */
 export function formatExtraVehicleReport(f: ExtraVehicleReportFields): string {
-  return [
+  const lines = [
     formatReportDate(f.requestDate),
     "",
     "対象デポ",
@@ -70,5 +73,14 @@ export function formatExtraVehicleReport(f: ExtraVehicleReportFields): string {
     "",
     "申請理由",
     f.reason.trim(),
-  ].join("\n");
+  ];
+  // 追加ドライバー（例: 深井奨之　6w(12号車)）
+  const extras = (f.additionalDrivers ?? []).filter((d) => d.name.trim());
+  if (extras.length > 0) {
+    lines.push("", "・追加ドライバー");
+    for (const d of extras) {
+      lines.push(d.assign.trim() ? `${d.name.trim()}　${d.assign.trim()}` : d.name.trim());
+    }
+  }
+  return lines.join("\n");
 }

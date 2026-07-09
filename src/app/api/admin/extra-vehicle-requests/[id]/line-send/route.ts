@@ -41,13 +41,25 @@ export async function POST(
     );
   }
 
-  // 増便申請フォーマット（対象日・対象デポ・該当便・台数・申請理由）
+  // 追加ドライバー（JSON文字列）→ 配列
+  let additionalDrivers: { name: string; assign: string }[] = [];
+  try {
+    const arr = r.additionalDrivers ? JSON.parse(r.additionalDrivers) : [];
+    if (Array.isArray(arr)) {
+      additionalDrivers = arr
+        .filter((x) => x && typeof x.name === "string")
+        .map((x) => ({ name: String(x.name), assign: typeof x.assign === "string" ? x.assign : "" }));
+    }
+  } catch { /* 不正JSONは無視 */ }
+
+  // 増便申請フォーマット（対象日・対象デポ・該当便・台数・申請理由・追加ドライバー）
   const text = formatExtraVehicleReport({
     requestDate: r.requestDate.toISOString().split("T")[0],
     depot: r.depot,
     waveNo: r.waveNo,
     vehicleCount: r.vehicleCount,
     assignedDriverName: r.assignedDriverName,
+    additionalDrivers,
     reason: r.reason,
   });
 

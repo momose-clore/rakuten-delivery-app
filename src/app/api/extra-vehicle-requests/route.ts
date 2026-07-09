@@ -6,7 +6,22 @@ import type {
   ExtraVehicleRequestStatus,
   CarioSyncStatus,
   RequesterRole,
+  AdditionalDriver,
 } from "@/types/extra-vehicle-request";
+
+// additional_drivers（JSON文字列）→ AdditionalDriver[]
+function parseAdditionalDrivers(raw: string | null): AdditionalDriver[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((x) => x && typeof x.name === "string")
+      .map((x) => ({ name: String(x.name), assign: typeof x.assign === "string" ? x.assign : "" }));
+  } catch {
+    return [];
+  }
+}
 
 // Prisma の増便申請レコード → API DTO（型は最小限で受ける）
 type Row = {
@@ -16,6 +31,7 @@ type Row = {
   waveNo: string;
   vehicleCount: number;
   assignedDriverName: string | null;
+  additionalDrivers: string | null;
   reason: string;
   status: string;
   createdByRole: string;
@@ -35,6 +51,7 @@ export function toDTO(r: Row): ExtraVehicleRequestDTO {
     waveNo: r.waveNo,
     vehicleCount: r.vehicleCount,
     assignedDriverName: r.assignedDriverName,
+    additionalDrivers: parseAdditionalDrivers(r.additionalDrivers),
     reason: r.reason,
     status: r.status as ExtraVehicleRequestStatus,
     createdByRole: r.createdByRole as RequesterRole,
@@ -114,6 +131,15 @@ export async function POST(req: NextRequest) {
       ? b.assignedDriverName.trim()
       : null;
 
+  // 追加ドライバー（[{name, assign}]。name空は除外）→ JSON文字列で保存
+  const additionalDriversArr = Array.isArray(b.additionalDrivers)
+    ? (b.additionalDrivers as unknown[])
+        .map((x) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {}))
+        .filter((x) => typeof x.name === "string" && (x.name as string).trim())
+        .map((x) => ({ name: (x.name as string).trim(), assign: typeof x.assign === "string" ? (x.assign as string).trim() : "" }))
+    : [];
+  const additionalDrivers = additionalDriversArr.length ? JSON.stringify(additionalDriversArr) : null;
+
   if (!requestDate || !depot || !waveNo || !reason) {
     return NextResponse.json(
       { error: "対象日・対象デポ・該当便・申請理由は必須です" },
@@ -145,6 +171,7 @@ export async function POST(req: NextRequest) {
       waveNo,
       vehicleCount,
       assignedDriverName,
+      additionalDrivers,
       reason,
       status: "pending",
       createdByUserId: session.user.id,

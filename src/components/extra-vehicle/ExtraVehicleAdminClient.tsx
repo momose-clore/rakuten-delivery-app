@@ -212,6 +212,7 @@ function RequestCard({
     waveNo: r.waveNo,
     vehicleCount: r.vehicleCount,
     assignedDriverName: r.assignedDriverName,
+    additionalDrivers: r.additionalDrivers,
     reason: r.reason,
   });
 
