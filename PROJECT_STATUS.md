@@ -1710,6 +1710,9 @@ npm run db:seed:prod
 | 2026-07-03 | OCR v6-5 精度レポート | import-accuracy拡張: 自動救済率/要確認率・要確認理由TOP・取込方式別(画像数)・W番号別(明細数)。統計のみ・個人情報非表示 |
 | 2026-07-03 | OCR v6-6 座標パーサー堅牢化 | l1m-row-block-parser: 数量列を左→右整列＋数値フィルタ(常温/クーラー/ケース/総数の割当ズレ防止)・配車No誤読耐性(ハイフン消失/l↔1でブロック取りこぼし防止) |
 | 2026-07-03 | OCR強化設計書 | OCR_ENHANCEMENT_DESIGN.md作成(調査結果・実装済み・要実画像検証項目・検証ループ手順)。Engine2最適/Engine3は座標非対応で不採用を明記 |
+| 2026-07-09 | セキュリティ残項目修復 | M2 本番Postgres SSL強制(prisma.ts ensureSsl)・H4 ログインレート制限(auth.ts・部分緩和)・H5 xlsx→SheetJS公式CDNパッチ版0.20.3(CVE解消)・M1 検証済(CarioApiError安全文言のみ・変更不要)。security-status.json更新。typecheck/lint/build緑・本番Ready |
+| 2026-07-09 | Wave時間帯 整合 | waves.ts を業務ルール最新版へ(W5 18:00開始・積み込み08:30〜09:00 LOADING_WINDOW追加)。integration-status.md で全ターミナル共有。遅配判定はend基準のため影響なし(12e453a) |
+| 2026-07-09 | 配達完了時刻の確定保存 | DeliveryItem.delivered_at 追加(migration・非破壊)。完了時に初回のみ記録・以後不変/取消でnull。crew-reports の waveDoneAt を deliveredAt由来に変更(旧データはupdatedAt代替)→wave別完了報告が後続編集でズレない。本番migration適用済(03ae00d) |
 ---
 
 ## ✅ 予測値・推定値の誤適用対策（実装完了）
