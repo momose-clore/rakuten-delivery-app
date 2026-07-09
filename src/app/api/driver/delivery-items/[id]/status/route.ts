@@ -27,17 +27,22 @@ export async function PATCH(
   }
 
   // 本人担当 or 応援（フォロー）中かを DB 側で確認
-  const [assignment, follow] = await Promise.all([
+  const [assignment, follow, item] = await Promise.all([
     prisma.assignment.findFirst({ where: { deliveryItemId, driverId } }),
     prisma.deliveryFollow.findFirst({ where: { deliveryItemId, driverId } }),
+    prisma.deliveryItem.findUnique({ where: { id: deliveryItemId }, select: { deliveredAt: true } }),
   ]);
   if (!assignment && !follow) {
     return NextResponse.json({ error: "この配送先にアクセスする権限がありません" }, { status: 403 });
   }
 
+  // 配達完了時刻（確定値）: COMPLETED で初回のみ記録し以後不変。完了取り消し時は null に戻す。
+  const deliveredAt =
+    status === "COMPLETED" ? (item?.deliveredAt ?? new Date()) : null;
+
   await prisma.deliveryItem.update({
     where: { id: deliveryItemId },
-    data: { deliveryStatus: status as AllowedStatus },
+    data: { deliveryStatus: status as AllowedStatus, deliveredAt },
   });
 
   return NextResponse.json({ success: true, deliveryItemId, status });

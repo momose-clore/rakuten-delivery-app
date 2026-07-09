@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
       driverId: true,
       waveNo: true,
       driver: { select: { name: true, vehicleId: true } },
-      deliveryItem: { select: { waveNo: true, deliveryStatus: true, address: true, updatedAt: true } },
+      deliveryItem: { select: { waveNo: true, deliveryStatus: true, address: true, deliveredAt: true, updatedAt: true } },
     },
   });
 
@@ -76,7 +76,8 @@ export async function GET(req: NextRequest) {
     const st = a.deliveryItem.deliveryStatus;
     if (st === "COMPLETED") w.completed++;
     if (!TERMINAL.has(st)) w.remaining++;
-    const at = a.deliveryItem.updatedAt;
+    // 完了時刻の確定値（deliveredAt）を優先。旧データ・非完了終了(不在/持戻/SKIP)は updatedAt で代替。
+    const at = a.deliveryItem.deliveredAt ?? a.deliveryItem.updatedAt;
     if (at && (!w.lastAt || at > w.lastAt)) w.lastAt = at;
     const city = cityOf(a.deliveryItem.address);
     if (city) w.cities.set(city, (w.cities.get(city) ?? 0) + 1);

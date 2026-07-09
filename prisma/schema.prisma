@@ -204,6 +204,9 @@ model DeliveryItem {
   // 誤配なし確認（クルーが配達時に確認）
   noMisdelivery     Boolean        @default(false) @map("no_misdelivery")
   noMisdeliveryAt   DateTime?      @map("no_misdelivery_at")
+  // 配達完了時刻（確定値）: COMPLETED になった時刻を記録。updatedAtと違い後続の編集で動かない。
+  // 取り消し（完了→他ステータス）時は null に戻す。wave別完了時刻/実績の正典。
+  deliveredAt       DateTime?      @map("delivered_at")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
 
