@@ -72,3 +72,6 @@ scripts/test-cario-auth.js
 
 # ターミナル稼働ハートビート（各自のランタイム状態・共有しない）
 .claude/heartbeats/
+
+# Tesseract 学習データ（大容量バイナリ・コミット不要）
+*.traineddata
