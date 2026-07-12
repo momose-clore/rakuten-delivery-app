@@ -49,8 +49,34 @@ type NavGroup = { id: string; label: string; icon: LucideIcon; items: NavItem[] 
 /* トップの単独リンク */
 const HOME: NavItem = { href: "/admin/dashboard", label: "ホーム", icon: LayoutDashboard };
 
-/* 似た機能を集約した5グループ（各ページURLは従来どおり） */
+/* ダッシュボード集約方針（2026-07-12 riku指示）:
+ *   取込 / 配車 / 地図・住所 のグループはナビ非表示（各ページ/URLは存置＝いつでも復帰可）。
+ *   主要機能はダッシュボードに集約（増便申請・CARIOシフト稼働実績・遅配予想・号車地図）。
+ *   下記の HIDDEN_GROUPS に退避（配列を GROUPS に戻せば再表示）。 */
 const GROUPS: NavGroup[] = [
+  {
+    id: "link",
+    label: "連携",
+    icon: Share2,
+    items: [
+      { href: "/admin/extra-vehicle-requests", label: "増便申請", icon: PlusSquare },
+      { href: "/admin/vehicle-count", label: "CARIOシフト稼働実績", icon: BarChart3 },
+      // 外部: CARIO（楽天）美女木シフトページ。新規タブで開く（CARIOログインが必要）。
+      { href: "https://cario-app-two.vercel.app/manager/shifts", label: "CARIOシフト", icon: ExternalLink, external: true },
+    ],
+  },
+  {
+    id: "system",
+    label: "システム",
+    icon: ShieldAlert,
+    items: [
+      { href: "/admin/security", label: "セキュリティ", icon: ShieldAlert },
+    ],
+  },
+];
+
+// ナビ非表示（ページ/URLは存置。復帰する場合は GROUPS に戻す）
+const HIDDEN_GROUPS: NavGroup[] = [
   {
     id: "import",
     label: "取込",
@@ -84,25 +110,8 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/location-overrides", label: "住所補正", icon: MapPinOff },
     ],
   },
-  {
-    id: "link",
-    label: "連携",
-    icon: Share2,
-    items: [
-      { href: "/admin/extra-vehicle-requests", label: "増便申請", icon: PlusSquare },
-      // 外部: CARIO（楽天）美女木シフトページ。新規タブで開く（CARIOログインが必要）。
-      { href: "https://cario-app-two.vercel.app/manager/shifts", label: "CARIOシフト", icon: ExternalLink, external: true },
-    ],
-  },
-  {
-    id: "system",
-    label: "システム",
-    icon: ShieldAlert,
-    items: [
-      { href: "/admin/security", label: "セキュリティ", icon: ShieldAlert },
-    ],
-  },
 ];
+void HIDDEN_GROUPS;
 
 function isItemActive(pathname: string, it: NavItem): boolean {
   return !it.external && (pathname === it.href || pathname.startsWith(it.href + "/"));
