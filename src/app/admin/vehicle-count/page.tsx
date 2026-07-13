@@ -13,7 +13,9 @@ interface Progress {
   carioActive: boolean;
 }
 
-interface MonthlyCell { haritsuke: number; sp: number; zosha: number }
+interface MonthlyCell { haritsuke: number; sp: number; zosha: number; ov?: { haritsuke: boolean; zosha: boolean } }
+const CAT_LABEL = { haritsuke: "貼付", sp: "SP", zosha: "増車" } as const;
+type CatField = keyof typeof CAT_LABEL;
 interface Monthly {
   month: string;
   days: string[];
@@ -51,6 +53,9 @@ export default function VehicleCountPage() {
   const [importMsg, setImportMsg] = useState("");
   // 月次一覧・Excelの「表示月」。日次(date)とは独立してボタンで切替。
   const [viewMonth, setViewMonth] = useState(today.slice(0, 7)); // "YYYY-MM"
+  // 月次グリッドのセル編集（キー: date|wave|field）
+  const [cellDraft, setCellDraft] = useState<Record<string, string>>({});
+  const [savingCell, setSavingCell] = useState<string | null>(null);
   const inFlight = useRef(false);
 
   const month = viewMonth;
@@ -149,10 +154,45 @@ export default function VehicleCountPage() {
     finally { setImporting(false); }
   }, [date, month, load, loadMonthly]);
 
+  /** 月次グリッドのセル保存（date×wave×field） */
+  const saveCell = useCallback(async (dk: string, no: number, field: CatField, raw: string, current: number) => {
+    const key = `${dk}|${no}|${field}`;
+    const val = Math.max(0, Math.floor(Number(raw) || 0));
+    if (val === current) { setCellDraft((p) => { const n = { ...p }; delete n[key]; return n; }); return; }
+    setSavingCell(key);
+    try {
+      const res = await fetch("/api/admin/vehicle-count", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: dk, waveNo: no, category: CAT_LABEL[field], count: val }),
+      });
+      if (!res.ok) { setError((await res.json().catch(() => ({}))).error ?? "保存に失敗しました"); return; }
+      setCellDraft((p) => { const n = { ...p }; delete n[key]; return n; });
+      await loadMonthly(viewMonth);
+      if (dk === date) load(date);
+    } catch { setError("保存に失敗しました"); }
+    finally { setSavingCell(null); }
+  }, [viewMonth, date, load, loadMonthly]);
+
   /** 数値セル（0は薄く） */
   const num = (n: number) => (
     <span className={n > 0 ? "text-gray-900 font-medium" : "text-gray-300"}>{n}</span>
   );
+
+  /** 編集可能セル（月次グリッド） */
+  const editCell = (dk: string, no: number, field: CatField, value: number, isOv: boolean) => {
+    const key = `${dk}|${no}|${field}`;
+    const draft = cellDraft[key] ?? String(value);
+    return (
+      <input
+        type="number" min={0} value={draft}
+        onChange={(e) => setCellDraft((p) => ({ ...p, [key]: e.target.value }))}
+        onBlur={() => saveCell(dk, no, field, draft, value)}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        className={`w-9 text-center text-xs rounded border tabular-nums ${isOv ? "bg-amber-50 border-amber-300" : "border-transparent hover:border-gray-300"} ${savingCell === key ? "opacity-50" : ""} ${value > 0 ? "text-gray-900" : "text-gray-300"} focus:border-blue-500 focus:bg-white focus:outline-none`}
+      />
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -303,7 +343,7 @@ export default function VehicleCountPage() {
               type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)}
               className="px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700"
             />
-            <span className="text-xs text-gray-500">Excelと同じ表（貼付=完了台数・SP=手入力・増車=フォロー）。横スクロール可。</span>
+            <span className="text-xs text-gray-500">各セルを直接編集できます（貼付/SP/増車）。自動集計を手入力で上書きすると<span className="bg-amber-50 border border-amber-300 px-1 rounded">黄色</span>表示。横スクロール可。</span>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
             <table className="text-xs border-collapse">
@@ -336,9 +376,9 @@ export default function VehicleCountPage() {
                       const c = monthly.cells[d]?.[no] ?? { haritsuke: 0, sp: 0, zosha: 0 };
                       return (
                         <Fragment key={d}>
-                          <td className="px-2 py-1.5 text-center border-l border-gray-100">{num(c.haritsuke)}</td>
-                          <td className="px-2 py-1.5 text-center">{num(c.sp)}</td>
-                          <td className="px-2 py-1.5 text-center">{num(c.zosha)}</td>
+                          <td className="px-1 py-1 text-center border-l border-gray-100">{editCell(d, no, "haritsuke", c.haritsuke, !!c.ov?.haritsuke)}</td>
+                          <td className="px-1 py-1 text-center">{editCell(d, no, "sp", c.sp, c.sp > 0)}</td>
+                          <td className="px-1 py-1 text-center">{editCell(d, no, "zosha", c.zosha, !!c.ov?.zosha)}</td>
                         </Fragment>
                       );
                     })}

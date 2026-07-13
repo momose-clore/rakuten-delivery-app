@@ -12,17 +12,23 @@ import { WAVE_WINDOWS, parseWaveNo } from "@/lib/waves";
 
 const TERMINAL = new Set(["COMPLETED", "ABSENT", "RETURNED", "SKIPPED"]);
 
-/** SP手動入力のカテゴリ名（vehicle_count_manual.category） */
+/** 手動入力カテゴリ（vehicle_count_manual.category）。SPは元から手入力、貼付/増車は手動上書き用。 */
 export const MANUAL_SP = "SP";
+export const MANUAL_HARITSUKE = "貼付";
+export const MANUAL_ZOSHA = "増車";
+export const MANUAL_CATEGORIES = [MANUAL_HARITSUKE, MANUAL_SP, MANUAL_ZOSHA] as const;
+export type ManualCategory = (typeof MANUAL_CATEGORIES)[number];
 
 export interface WaveCrewRow {
   wave: string;      // "W1"
   label: string;     // "1便"
   window: string;    // "10:00〜12:00"
   planned: number;   // 予定台数（通常稼働＝割当ありドライバー数）
-  completed: number; // 貼付・完了台数（waveを消化したドライバー数）
+  completed: number; // 貼付台数（自動集計。手動上書きがあればその値）
   sp: number;        // SP（手動入力）
-  follows: number;   // 増車（フォロー）ドライバー数
+  follows: number;   // 増車台数（自動=フォロー。手動上書きがあればその値）
+  /** 手動上書きされているカテゴリ（UIで判別・"貼付"|"増車"。SPは常に手入力なので含めない） */
+  overrides: { haritsuke: boolean; zosha: boolean };
 }
 export interface VehicleCountProgress {
   date: string;
@@ -64,8 +70,8 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
       select: { driverId: true, deliveryItem: { select: { waveNo: true } } },
     }),
     prisma.vehicleCountManual.findMany({
-      where: { date: day, category: MANUAL_SP },
-      select: { waveNo: true, count: true },
+      where: { date: day },
+      select: { waveNo: true, category: true, count: true },
     }),
     // CARIO からpullした終了報告（未同期なら空＝既存動作を維持）
     prisma.waveCompletion.findMany({
@@ -80,8 +86,15 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
   const haritsukeByWave = new Map<number, Set<string>>();
   const followByWave = new Map<number, Set<string>>();
   for (const w of WAVE_WINDOWS) { byWave.set(w.no, new Map()); haritsukeByWave.set(w.no, new Set()); followByWave.set(w.no, new Set()); }
+  // 手動値（カテゴリ別）。貼付/増車は上書き、SPは入力値。
   const spByWave = new Map<number, number>();
-  for (const m of manual) spByWave.set(m.waveNo, m.count);
+  const haritsukeOverride = new Map<number, number>();
+  const zoshaOverride = new Map<number, number>();
+  for (const m of manual) {
+    if (m.category === MANUAL_SP) spByWave.set(m.waveNo, m.count);
+    else if (m.category === MANUAL_HARITSUKE) haritsukeOverride.set(m.waveNo, m.count);
+    else if (m.category === MANUAL_ZOSHA) zoshaOverride.set(m.waveNo, m.count);
+  }
 
   for (const a of assignments) {
     const no = parseWaveNo(a.deliveryItem.waveNo ?? a.waveNo);
@@ -115,10 +128,17 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
 
   const waves: WaveCrewRow[] = WAVE_WINDOWS.map((w) => {
     const planned = byWave.get(w.no)!.size;
+    const autoHaritsuke = haritsukeByWave.get(w.no)!.size;
+    const autoZosha = followByWave.get(w.no)!.size;
+    const hOv = haritsukeOverride.get(w.no);
+    const zOv = zoshaOverride.get(w.no);
     return {
       wave: w.key.toUpperCase(), label: w.label, window: `${w.start}〜${w.end}`,
-      planned, completed: haritsukeByWave.get(w.no)!.size,
-      sp: spByWave.get(w.no) ?? 0, follows: followByWave.get(w.no)!.size,
+      planned,
+      completed: hOv ?? autoHaritsuke,
+      sp: spByWave.get(w.no) ?? 0,
+      follows: zOv ?? autoZosha,
+      overrides: { haritsuke: hOv !== undefined, zosha: zOv !== undefined },
     };
   });
 
@@ -130,23 +150,42 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
   return { date, now: now.toISOString(), waves, totals, carioActive };
 }
 
-/** SP手動入力値を保存（date × wave × SP でupsert）。count<0 は0に丸める。 */
-export async function saveSpManual(date: string, waveNo: number, count: number, updatedByName?: string): Promise<void> {
+/**
+ * 手動カウントを保存（date × wave × category でupsert）。count<0 は0に丸める。
+ * 貼付/増車は自動集計への「上書き」、SPは入力値そのもの。
+ */
+export async function saveManualCount(
+  date: string, waveNo: number, category: ManualCategory, count: number, updatedByName?: string
+): Promise<void> {
   const { day } = dayRange(date);
   const safe = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
   await prisma.vehicleCountManual.upsert({
-    where: { date_waveNo_category: { date: day, waveNo, category: MANUAL_SP } },
-    create: { date: day, waveNo, category: MANUAL_SP, count: safe, updatedByName: updatedByName ?? null },
+    where: { date_waveNo_category: { date: day, waveNo, category } },
+    create: { date: day, waveNo, category, count: safe, updatedByName: updatedByName ?? null },
     update: { count: safe, updatedByName: updatedByName ?? null },
   });
+}
+
+/** 手動上書きを解除（自動集計へ戻す）。貼付/増車で使用。SPは0保存で実質クリア。 */
+export async function clearManualCount(date: string, waveNo: number, category: ManualCategory): Promise<void> {
+  const { day } = dayRange(date);
+  await prisma.vehicleCountManual.deleteMany({ where: { date: day, waveNo, category } });
+}
+
+/** 後方互換: SP保存 */
+export async function saveSpManual(date: string, waveNo: number, count: number, updatedByName?: string): Promise<void> {
+  await saveManualCount(date, waveNo, MANUAL_SP, count, updatedByName);
 }
 
 // ─────────────────────────────────────────────
 // 月次集計（Excel出力用）
 // ─────────────────────────────────────────────
 
-/** 1日分・1wave分の台数（貼付=完了台数 / SP=手動 / 増車=フォロー） */
-export interface MonthlyCell { haritsuke: number; sp: number; zosha: number }
+/** 1日分・1wave分の台数（貼付=完了台数 / SP=手動 / 増車=フォロー）。ov=手動上書き有無 */
+export interface MonthlyCell {
+  haritsuke: number; sp: number; zosha: number;
+  ov: { haritsuke: boolean; zosha: boolean };
+}
 /** 月次集計: day("YYYY-MM-DD") → wave番号(1-6) → MonthlyCell */
 export interface MonthlyVehicleCounts {
   month: string;               // "YYYY-MM"
@@ -189,7 +228,7 @@ export async function getMonthlyVehicleCounts(month: string): Promise<MonthlyVeh
     for (const w of progress.waves) {
       const no = waveNoOf(w.wave);
       if (!no) continue;
-      cells[dk]![no] = { haritsuke: w.completed, sp: w.sp, zosha: w.follows };
+      cells[dk]![no] = { haritsuke: w.completed, sp: w.sp, zosha: w.follows, ov: w.overrides };
     }
   }
 
