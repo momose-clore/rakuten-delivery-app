@@ -3,6 +3,85 @@
 > 最終確認: 2026-07-03 / 確認担当: γ（CARIO/API連携）
 > 本ファイルは3ターミナル並行作業の**情報共有用**。各担当は自分の節を更新し、境界を尊重すること。
 
+## 🆕📌 β → γ 依頼：CARIO 管理者ページに「楽天配送管理」への遷移ボタンを追加（2026-07-13・riku指示）
+
+**背景**：riku指示「CARIO側の管理者ページに、この楽天管理へのボタンを表示させたい」。
+楽天配送アプリ（β管轄）は別リポジトリのため β から CARIO 側は編集不可 → **CARIO のコードを持つ γ が追加する**方針でriku合意（2026-07-13）。
+
+**やること（γ）**：CARIO 管理者ページのヘッダー/ダッシュボード等に、下記リンクボタンを1つ設置。
+
+- **遷移先URL（本番・確定）**：`https://rakuten-delivery-app.vercel.app/admin/dashboard`
+- ボタン文言：**「楽天配送管理」**（アイコンを付けるなら配送/トラック系）
+- 新規タブ推奨（`target="_blank" rel="noopener noreferrer"`）。クリック後は楽天側のログイン（管理者ID/PW）を通す想定でOK。
+
+**貼るだけスニペット例（CARIOがReact/Nextの場合）**：
+```tsx
+<a
+  href="https://rakuten-delivery-app.vercel.app/admin/dashboard"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="inline-flex items-center gap-2 rounded-md bg-[#26324F] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+>
+  楽天配送管理
+</a>
+```
+（プレーンHTMLでも同URLの `<a>` でOK。表示位置・デザインはCARIO側の既存トンマナに合わせて調整可。）
+
+**補足**：riku決定により **相澤至人への楽天管理アカウント作成は不要**（対応なし）。表示可否の出し分けもCARIO側の判断でOK。
+
+---
+
+## 🆕📌 α → γ 依頼：CARIO に「稼働者の終了報告 pull API」を追加してほしい（2026-07-13・riku指示）
+
+**背景**：美女木デポの台数確認表（`/admin/vehicle-count`・α実装）は、waveの終了報告1件＝1台として日付列に自動加算する。現状 α 側は「稼働者が当アプリで完了報告 → 加算」で動くが、**実運用では稼働者は群LINE【楽天スーパー美女木】で終了報告している**ため当アプリにデータが入らない。
+riku判断：**群LINE直読みは方針違反（当アプリは楽天/CARIOのLINEに触らない）で不可** → **CARIO が保持する終了報告を当アプリが pull する**方式に決定。
+
+**α が実機確認済み（2026-07-13）**：現行 CARIO API `/api/external/rakuten/assignments` は**予定（割当）データのみ**で完了/終了報告フィールドなし。`reports`/`completions`/`wave-status` 等は404。→ **新エンドポイントが必要**。
+
+**γ / CARIO へお願いする契約（希望仕様。CARIO側の実データに合わせて調整可）**：
+```
+GET /api/external/rakuten/wave-completions?from=YYYY-MM-DD&to=YYYY-MM-DD[&site_id=]
+Authorization: Bearer <RAKUTEN_APP_API_KEY>   ← 既存キーと共通で可
+
+200 →
+{
+  "from":"2026-07-12","to":"2026-07-12",
+  "completions":[
+    {
+      "work_date":"2026-07-12",
+      "site":{ "id":"...", "name":"楽天ネットスーパー（美女木）" },
+      "driver":{ "id":"...", "name":"..." },     // どちらか片方でも可（突合はid優先）
+      "course":{ "course_no":1, "name":"1号車" },  // 任意（あれば号車突合に使う）
+      "wave_no":3,                                // 1〜6（必須）
+      "vehicle_type":"貼付|SP|増車",               // 任意。あれば区分加算、無ければ「貼付」扱い
+      "completed_at":"2026-07-12T15:20:00+09:00"  // 終了報告時刻（必須）
+    }
+  ]
+}
+```
+- **最小要件**：`work_date` / `wave_no` / `driver`(id or name) / `completed_at` の4つがあれば台数反映可能（貼付として日次加算）。`vehicle_type` があれば貼付/SP/増車に振り分ける。
+- **フォールバック**：構造化が難しく「wave単位の完了台数」しか出せない場合は、`{work_date, wave_no, completed_count, vehicle_type?}` 形式でも可（driver粒度が無くても日付×waveの台数は埋められる）。
+- **粒度/更新**：pull間隔は当アプリ側で調整（既存 cron/ポーリング流用）。CARIO側は「最新の完了状況を返す」だけでOK（重複排除は当アプリ側で driver×wave×date のユニークで担保）。
+
+**分担**：
+- **γ**：CARIO側エンドポイント調整 ＋ 当アプリ側 pull クライアント（`src/lib/cario/*`＝γ区画）。取得結果を **α提供の反映関数**へ渡す。
+- **α**：受け取った完了データを台数確認表へ反映する部分（`src/lib/kpi/vehicle-count.ts`＝α区画）。**契約が固まり次第 α が反映I/Fを実装**（driver×wave×date 単位の upsert → 貼付/SP/増車 集計）。
+
+→ **γ へ**：CARIO側で出せる実データ形（driver粒度が出せるか／vehicle_type有無）をこの節に1行返信ください。それに合わせて α が反映I/Fを確定します。
+
+**✅ α側は実装完了（2026-07-13）＝CARIOがendpointを出せば即稼働**：
+- `wave_completions` テーブル（migration `20260713120000`）＋ pull `src/lib/cario/getCompletions.ts`（**404/未設定は握って無害**）＋ 全刷新sync `src/lib/cario/completions-sync.ts`（driver突合 `carioDriverId`・重複排除・fallback対応）。
+- 台数反映：`getVehicleCountProgress` が `wave_completions` を貼付/増車にマージ（**SPは手入力を正**として非取込）。
+- 取込導線：`POST /api/admin/vehicle-count/sync-cario` ＋ 画面ボタン「CARIO終了報告を取込」＋ cron `cario-sync` に追加（best-effort）。
+- 検証済：実CARIO APIで**404を握れる**こと、疑似データで貼付/増車マージ＋重複排除＋carioActiveバッジ。
+- **γ対応事項**：CARIO側 `wave-completions` を実装（or パス名を `CARIO_COMPLETIONS_PATH` で通知）。当アプリ側の追加改修は基本不要。
+
+**🔄 実仕様に配線完了（2026-07-13・γから実API提供）**：
+- 終了報告の実体は **`GET /api/rakuten/wave?driver_id=<uuid>`**（driver単位/当日固定/認証不要/site引数なし・`rakuten_wave_records`＋`rakuten_daily_reports`）。当初 `/api/external/rakuten/*` を探して404だった。
+- α側 `getCompletions.ts` を実仕様へ変更：**assignments から美女木のdriver列挙→各driverに /api/rakuten/wave** →`waves[]`を貼付/増車(`zoubin_approved`)に対応付け。cron本日ぶんを日次蓄積。
+- ライブ疎通OK（HTTP200・0件は稼働者未報告のため）。
+- **γへ相談（任意・非ブロッカー）**：月次台数表向けに、**日付指定で美女木の全wave_recordsを一括返す read-only endpoint** があると過去日も一発で埋まる（現状は当日pull＋日次蓄積で運用）。難しければ現状仕様のままで可。
+
 ## 直近の全体連携チェック結果（2026-07-03・γ実施）
 
 | 項目 | 結果 |
