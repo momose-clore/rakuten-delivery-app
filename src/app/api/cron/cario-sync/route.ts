@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { CarioApiError } from "@/lib/cario/client";
 import { syncCarioAssignments, markRangeStale, jstDateStr } from "@/lib/cario/sync";
+import { syncCarioCompletions } from "@/lib/cario/completions-sync";
 
 /**
  * CARIO 定期同期 Cron（Vercel Cron から1分間隔で実行）。
@@ -33,6 +34,16 @@ export async function GET(req: NextRequest) {
   try {
     const result = await syncCarioAssignments(from, to);
 
+    // 終了報告（wave完了）も同期。CARIO側未提供(404)/未設定なら available:false で無害に握る。
+    let completions: { available: boolean; inserted: number; reason?: string } = { available: false, inserted: 0 };
+    try {
+      // CARIO wave API は当日固定 → 本日ぶんを取り込む（過去日は蓄積済みを保持）
+      const c = await syncCarioCompletions(from);
+      completions = { available: c.available, inserted: c.inserted, reason: c.reason };
+    } catch (e) {
+      console.error("[cron/cario-sync] completions同期エラー:", e instanceof Error ? e.message : "unknown");
+    }
+
     // ※ audit_log は書かない（AuditLog.userId が必須のため。cron結果はVercelログで追跡）
     return NextResponse.json({
       ok: true,
@@ -42,6 +53,7 @@ export async function GET(req: NextRequest) {
       driverUpdated: result.driverUpdated,
       shiftUpserted: result.shiftUpserted,
       usedMock: result.usedMock,
+      completions,
       syncedAt: new Date().toISOString(),
     });
   } catch (err) {

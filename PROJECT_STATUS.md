@@ -1,7 +1,73 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-07-09（セキュリティ残項目 M2/H4/H5/M1 修復・本番デプロイ Ready）
+> 最終更新: 2026-07-12（台数確認表：終了報告で自動加算＋SP手入力＋Excel(.xlsx)ダウンロード）
+
+---
+
+## 🆕 台数確認表：終了報告で自動加算＋SP手入力＋Excel出力（2026-07-12）
+
+riku依頼：「③デポ美女木 台数管理表」に、waveごとの終了報告が入るたび **1台ずつ自動加算**したい。仕様確定（riku）：**貼付=通常稼働の完了台数（自動）／増車=フォロー（自動）／SP=手入力**、**1台=ドライバー1人**、反映は**アプリ内で集計→Excelダウンロード**（デプロイ済アプリから手元のローカルExcelへ直書きは不可のため）。
+
+- **自動加算ロジック**（既存 `src/lib/kpi/vehicle-count.ts` を拡張）：各waveを消化（担当明細が全てterminal）したドライバー数を「貼付=完了台数」として計上。=「終了報告1件＝1台」。増車=そのwaveのフォロー人数。
+- **SP手入力**：判別データが無いため管理者が手入力。保存先 `vehicle_count_manual`（date×wave×category=SP）。migration `20260712140000_add_vehicle_count_manual`（純additive・**DB起動時に `prisma migrate deploy` 要適用**）。
+- **API**：`GET /api/admin/vehicle-count?date=`（貼付/SP/増車を返却）／`POST`（SP保存・ADMIN限定）／`GET /api/admin/vehicle-count/export?month=YYYY-MM`（.xlsx出力）。
+- **Excel出力**：`src/lib/kpi/vehicle-count-xlsx.ts`。既存テンプレと**同一セル配置**（B1期間・C1"台数確認表"・6/7行=日付シリアル・8行=貼付/SP/増車・9〜14行=W1〜W6・15行=合計、D列から1日3列）。シリアル日付一致を検証（6/1=46174, 7/1=46204）・round-trip確認済。
+- **月次=日次の一元化**：`getMonthlyVehicleCounts` は各日 `getVehicleCountProgress` を呼ぶ実装に統一（**画面の数値＝Excelの数値**を保証。日付/SP突合のタイムゾーン二重管理バグを排除）。
+- **画面**：`/admin/vehicle-count` に SP編集欄＋保存＋「Excelダウンロード（当月）」ボタン追加。30秒自動更新は維持。
+- 品質：`typecheck` / `lint` / `npm run build`（migrate deploy 込み）すべてパス。
+- **ローカル実DB検証済**：SP保存/読取/上書き、月次集計→xlsx出力までライブDBで確認（daily=monthly=xlsxセルが一致）。
+- **ローカルDB復旧**：`/tmp/epg`（embedded-postgres）がmacOSの/tmp清掃でバイナリ・data破損 → PG18で再構築（data18）＋起動＋全19migration適用＋seed。起動: `node /tmp/epg/start.mjs`（.env.localのDATABASE_URLを読み `localhost:5432/delivery_app`・persistent）。
+- **未実施**：本番Vercelへのデプロイ（migration `20260712140000` は本番 `prisma migrate deploy` で適用要）。
+
+### 追記（2026-07-13）：日付重複修正＋月次一覧をサイト内表示
+- **日付ダブり修正**：Excelの6・7行が同じ日付だった（テンプレ踏襲）→ 6行=日付・**7行=曜日**（水/木…）に変更（`weekdayJa`）。
+- **月次一覧をサイト内に追加**：`/admin/vehicle-count` に「月次一覧（Excelと同じ並び）」を表示（W1〜W6＋合計 × 日付ごと 貼付/SP/増車・横スクロール・土日色分け・30秒更新・SP保存で即反映）。API `GET /api/admin/vehicle-count/monthly?month=YYYY-MM`。
+- **更新タイミング**：サイト表示は自動更新（30秒＆終了報告で加算）。Excelは**押した瞬間のスナップショット**（自動保存はされない・必要な時にDLする運用）。
+- typecheck / lint パス・実DBで曜日/月次を検証済。
+
+### 追記（2026-07-13）：終了報告の取り込み経路 = CARIO pull に決定（群LINE直読みは不可）
+- riku判断：稼働者の終了報告を台数確認表に反映する経路は **CARIOからのpull**に決定。**群LINE【楽天スーパー美女木】の直接読み取りは方針違反（楽天/CARIOのLINEに触らない）＋技術的にも他社botの群は読めないため不可**。
+- α実機確認：現行CARIO API `/assignments` は**予定データのみ**（完了フィールド無し・completions系404）→ **CARIO側に新エンドポイント `wave-completions` が必要**。
+- **α→γ 正式依頼を `docs/integration-status.md` 冒頭に登録**（API契約・最小要件・フォールバック・分担を明記）。γがCARIO側＋pullクライアント（`src/lib/cario/*`）、αが台数反映I/F（`src/lib/kpi/vehicle-count.ts`）。契約確定待ち。
+- 暫定運用：それまでは「当アプリで完了報告→自動加算」＋「SP手入力」で日付を埋められる。
+
+### 追記（2026-07-13）：CARIO終了報告pull 受け側を実装完了（endpoint提供待ちで即稼働）
+- riku「君が進めていいよ」→ CARIO側endpoint未提供でも動くよう**受け側を全実装**（404/未設定は握って無害）。
+- **DB**：`wave_completions`（migration `20260713120000`・適用済）。CARIO完了を driver×wave×date で保持。
+- **pull/sync**：`src/lib/cario/getCompletions.ts`（grained＋fallback両対応）／`src/lib/cario/completions-sync.ts`（対象期間を全刷新＝冪等・`carioDriverId`突合・重複排除）。
+- **反映**：`getVehicleCountProgress` が `wave_completions` を**貼付/増車にマージ**（driverKey重複排除・**SPは手入力を正**として非取込）。`carioActive` フラグ追加。
+- **導線**：`POST /api/admin/vehicle-count/sync-cario`（管理者）／画面「CARIO終了報告を取込」ボタン＋「CARIO終了報告 反映中」バッジ／cron `cario-sync` にbest-effortで追加。
+- **検証**：typecheck/lint/build ✅。実CARIO APIで404握り確認、疑似データで貼付/増車マージ＋重複排除を実DB確認。
+- **残**：CARIO側 `GET /api/external/rakuten/wave-completions` の実装（γ/CARIO）。パスが違う場合は env `CARIO_COMPLETIONS_PATH` で指定可。本番デプロイ（migration適用要）。
+
+### 追記（2026-07-13・その2）：実エンドポイント `/api/rakuten/wave` に配線・ライブ疎通OK
+- γから実仕様提供：終了報告APIは **`GET /api/rakuten/wave?driver_id=<uuid>`**（CARIOのcrew dashboardが叩く内部API・**ドライバー単位/当日固定/認証不要**・site引数なし）。`/api/external/rakuten/*` ではなかったため当初404だった。
+- **当アプリの受け側を実仕様へ作り替え**（`getCompletions.ts`）：その日のCARIO配車(assignments)から**美女木デポのdriver.idを列挙**→各 driver に `/api/rakuten/wave` を並列(5)取得→ `waves[]` を「1レコード=1台」で貼付/増車に対応付け（`zoubin_approved`=増車）。`completedAt`= `returned_at ?? first_arrival_time`。
+- **当日固定の制約**：APIは当日しか返さない → **cron `cario-sync`（本日）で日次スナップショット蓄積**。過去日は蓄積済みのみ表示。非当日 sync は `ONLY_TODAY_SUPPORTED` で**DB非変更**（蓄積保持）。
+- **ライブ検証（2026-07-13）**：`/api/rakuten/wave` HTTP200到達・美女木ドライバー列挙OK・pull available:true（本日は稼働者未報告のため0件）・非当日は安全スキップ。typecheck/lint/build ✅。
+- **台数の定義**：現状「出発(start_wave)した号車=1台」で貼付/増車を計上（帰庫前でも計上＝取りこぼし防止）。「帰庫(returned_at)のみ計上」に変更も可（要望あれば1行変更）。
+- **γへの改善要望（任意）**：月次台数表用途では driver単位/当日固定は非効率。将来 **日付指定＋美女木の全wave_recordsを一括で返すbulk endpoint** があれば過去日も一発。現状仕様でも日次蓄積で運用可。
+
+### 追記（2026-07-13・その3）：カウント定義=帰庫／LINEエクスポート取込で過去日バックフィル
+- riku指示「ウェーブ終了ごとにカウント」＝**帰庫（returned_at）でカウント**に確定。ライブpull(`/api/rakuten/wave`)も**帰庫済みwaveのみ計上**に変更（出発だけ/走行中は数えない）。
+- **LINEエクスポート取込**（過去日バックフィル）：群【楽天ネットスーパー美女木】の CARIO投稿 `{名前} {N}W帰庫 {HH:MM}` を解析して台数(貼付)へ。当日固定APIでは取れない過去日を埋める。
+  - パーサ `src/lib/cario/parseLineExport.ts`（日付見出し＋帰庫行を抽出・氏名/wave/時刻）。
+  - 取込 `importLineCompletions`（`completions-sync.ts`）：**source="LINE"** で日付ごと全刷新（CARIO API=source="CARIO"当日ぶんとは分離＝相互に上書きしない）。
+  - `POST /api/admin/vehicle-count/import-line { text }`＋画面「LINE報告を取込（過去日）」ファイル選択ボタン。
+- **実ファイル検証（2026-07-13）**：`[LINE]【楽天ネットスーパー美女木】.txt`（55KB）を取込→**16帰庫/3日分（6/23〜25）**を抽出、6/23=W1:2 W2:1 W3:1 W4:1 W5:1 合計6台、6月Excelセルにも反映を確認。typecheck/lint/build ✅。
+- カウント元の区分：LINE取込は増車判別文言が無いため**貼付固定**（増車はCARIO API `zoubin_approved` 経由 or 手運用）。SPは手入力のまま。
+
+### 追記（2026-07-13・その4）：業務終了(NW完了)形式に対応し7月を反映（6月は除外）
+- **6/25以降 CARIO投稿がper-wave帰庫→「{名前} が業務を終了しました（6W完了）」形式に変化**（全41件・全て6W完了）。パーサに `WORK_END` 追加：`（NW完了）`→そのドライバーが W1〜WN を完了＝各waveに1台計上（帰庫と重複は氏名×waveで排除）。
+- riku指示「6月いらない・7月から」→ 6月分 wave_completions を削除。**7/1〜7/12 を反映**（各日=当日終了ドライバー数×6wave。例 7/3=4名→各wave4台/日計24台）。7/13(当日)はまだ終了報告が無いため未計上（夕方以降 or 翌日エクスポートで反映）。
+- 実ファイル取込で検証済（typecheck/lint/build ✅）。
+- 注意：LINE再取込すると6月下旬(6/23-29)も再度入る。恒久的に6月を除外したい場合は取込に開始日カットオフを追加可（未実装・要望次第）。
+
+### 追記（2026-07-13・その5）：月次一覧に「表示月切替」を追加
+- 月次一覧を日次(date)から独立した **表示月(viewMonth)** で制御。**◀ 前月 / ▶ 翌月 / 「今月」/ 月ピッカー(input type=month)** を月次一覧ヘッダに追加。
+- Excelダウンロードボタンも表示月に追従（選択中の月のシートを出力）。
+- 30秒自動更新は表示月に対して継続。typecheck/lint/build ✅。
 
 ---
 

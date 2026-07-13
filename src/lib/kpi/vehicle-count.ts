@@ -1,36 +1,60 @@
 /**
- * 台数管理表（wave別 稼働台数の消化進捗）集計。read-only。
- * riku指定マッピング: 貼付=通常稼働 / SP=無視 / 増車=フォロー。
- * 「wave完了に応じて加算」＝各waveを消化(全明細terminal)したクルー数を数える。
+ * 台数確認表（wave別 稼働台数の消化進捗）集計。read-only（SP保存を除く）。
+ * riku指定マッピング: 貼付=通常稼働 / SP=手動入力 / 増車=フォロー。
+ * 「wave完了に応じて加算」＝各waveを消化(全明細terminal)したクルー数を数える（ドライバー1人=1台）。
  *
- * 完了台数 = そのwaveを全て終えたドライバー数 / 予定台数 = そのwaveに割当のあるドライバー数。
+ * 貼付（完了台数）= そのwaveを全て終えたドライバー数 / 予定台数 = そのwaveに割当のあるドライバー数。
  * 増車 = そのwaveの明細をフォロー(応援)しているドライバー数。
+ * SP  = 判別データが無いため管理者が手入力した値（vehicle_count_manual）。
  */
 import { prisma } from "@/lib/prisma";
 import { WAVE_WINDOWS, parseWaveNo } from "@/lib/waves";
 
 const TERMINAL = new Set(["COMPLETED", "ABSENT", "RETURNED", "SKIPPED"]);
 
+/** SP手動入力のカテゴリ名（vehicle_count_manual.category） */
+export const MANUAL_SP = "SP";
+
 export interface WaveCrewRow {
   wave: string;      // "W1"
   label: string;     // "1便"
   window: string;    // "10:00〜12:00"
   planned: number;   // 予定台数（通常稼働＝割当ありドライバー数）
-  completed: number; // 完了台数（waveを消化したドライバー数）
+  completed: number; // 貼付・完了台数（waveを消化したドライバー数）
+  sp: number;        // SP（手動入力）
   follows: number;   // 増車（フォロー）ドライバー数
 }
 export interface VehicleCountProgress {
   date: string;
   now: string;
   waves: WaveCrewRow[];
-  totals: { planned: number; completed: number; follows: number };
+  totals: { planned: number; completed: number; sp: number; follows: number };
+  /** CARIO の終了報告がこの日に取り込まれているか（貼付/増車に反映済み） */
+  carioActive: boolean;
+}
+
+/** 対象日 00:00〜翌日 00:00 の範囲を返す */
+function dayRange(date: string): { day: Date; next: Date } {
+  const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
+  const next = new Date(day);
+  next.setDate(next.getDate() + 1);
+  return { day, next };
+}
+
+/**
+ * "YYYY-MM-DD" → その日の 00:00（ローカル）。
+ * WaveCompletion / VehicleCountManual の @db.Date カラムの保存・照合に使う共通日付
+ * （書き込みと読み取りで同一変換を使うことで round-trip を一致させる）。
+ */
+export function vehicleCountDayStart(date: string): Date {
+  return dayRange(date).day;
 }
 
 export async function getVehicleCountProgress(date: string, now: Date = new Date()): Promise<VehicleCountProgress> {
-  const day = new Date(date); day.setHours(0, 0, 0, 0);
-  const next = new Date(day); next.setDate(next.getDate() + 1);
+  const { day, next } = dayRange(date);
 
-  const [assignments, follows] = await Promise.all([
+  const [assignments, follows, manual, completions] = await Promise.all([
     prisma.assignment.findMany({
       where: { deliveryItem: { dispatchImage: { deliveryDate: { gte: day, lt: next } } } },
       select: { driverId: true, waveNo: true, deliveryItem: { select: { waveNo: true, deliveryStatus: true } } },
@@ -39,12 +63,25 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
       where: { deliveryItem: { dispatchImage: { deliveryDate: { gte: day, lt: next } } } },
       select: { driverId: true, deliveryItem: { select: { waveNo: true } } },
     }),
+    prisma.vehicleCountManual.findMany({
+      where: { date: day, category: MANUAL_SP },
+      select: { waveNo: true, count: true },
+    }),
+    // CARIO からpullした終了報告（未同期なら空＝既存動作を維持）
+    prisma.waveCompletion.findMany({
+      where: { date: day },
+      select: { waveNo: true, driverKey: true, vehicleType: true },
+    }),
   ]);
 
-  // wave番号(1-6) → driverId → {total, terminal}
+  // wave番号(1-6) → driverId → {total, terminal}（予定台数＝割当ドライバー数）
   const byWave = new Map<number, Map<string, { total: number; terminal: number }>>();
+  // 貼付・増車は driverKey の集合で重複排除（in-app driverId と CARIO driverKey を union）
+  const haritsukeByWave = new Map<number, Set<string>>();
   const followByWave = new Map<number, Set<string>>();
-  for (const w of WAVE_WINDOWS) { byWave.set(w.no, new Map()); followByWave.set(w.no, new Set()); }
+  for (const w of WAVE_WINDOWS) { byWave.set(w.no, new Map()); haritsukeByWave.set(w.no, new Set()); followByWave.set(w.no, new Set()); }
+  const spByWave = new Map<number, number>();
+  for (const m of manual) spByWave.set(m.waveNo, m.count);
 
   for (const a of assignments) {
     const no = parseWaveNo(a.deliveryItem.waveNo ?? a.waveNo);
@@ -55,26 +92,106 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
     if (TERMINAL.has(a.deliveryItem.deliveryStatus)) cur.terminal++;
     m.set(a.driverId, cur);
   }
+  // in-app: waveを消化(全明細terminal)したドライバーを貼付台数に
+  for (const [no, m] of byWave) {
+    for (const [driverId, agg] of m) {
+      if (agg.total > 0 && agg.terminal === agg.total) haritsukeByWave.get(no)!.add(driverId);
+    }
+  }
   for (const f of follows) {
     const no = parseWaveNo(f.deliveryItem.waveNo);
     if (!no || !followByWave.has(no)) continue;
     followByWave.get(no)!.add(f.driverId);
   }
+  // CARIO 終了報告をマージ（貼付/増車。SPは手入力を正とするため取り込まない）
+  let carioActive = false;
+  for (const c of completions) {
+    if (!haritsukeByWave.has(c.waveNo)) continue;
+    carioActive = true;
+    if (c.vehicleType === "増車") followByWave.get(c.waveNo)!.add(c.driverKey);
+    else if (c.vehicleType === "貼付") haritsukeByWave.get(c.waveNo)!.add(c.driverKey);
+    // "SP" は手入力(vehicle_count_manual)を正とするので集計に加えない
+  }
 
   const waves: WaveCrewRow[] = WAVE_WINDOWS.map((w) => {
-    const m = byWave.get(w.no)!;
-    let planned = 0, completed = 0;
-    for (const agg of m.values()) {
-      planned++;
-      if (agg.total > 0 && agg.terminal === agg.total) completed++;
-    }
-    return { wave: w.key.toUpperCase(), label: w.label, window: `${w.start}〜${w.end}`, planned, completed, follows: followByWave.get(w.no)!.size };
+    const planned = byWave.get(w.no)!.size;
+    return {
+      wave: w.key.toUpperCase(), label: w.label, window: `${w.start}〜${w.end}`,
+      planned, completed: haritsukeByWave.get(w.no)!.size,
+      sp: spByWave.get(w.no) ?? 0, follows: followByWave.get(w.no)!.size,
+    };
   });
 
   const totals = waves.reduce(
-    (acc, r) => ({ planned: acc.planned + r.planned, completed: acc.completed + r.completed, follows: acc.follows + r.follows }),
-    { planned: 0, completed: 0, follows: 0 }
+    (acc, r) => ({ planned: acc.planned + r.planned, completed: acc.completed + r.completed, sp: acc.sp + r.sp, follows: acc.follows + r.follows }),
+    { planned: 0, completed: 0, sp: 0, follows: 0 }
   );
 
-  return { date, now: now.toISOString(), waves, totals };
+  return { date, now: now.toISOString(), waves, totals, carioActive };
+}
+
+/** SP手動入力値を保存（date × wave × SP でupsert）。count<0 は0に丸める。 */
+export async function saveSpManual(date: string, waveNo: number, count: number, updatedByName?: string): Promise<void> {
+  const { day } = dayRange(date);
+  const safe = Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
+  await prisma.vehicleCountManual.upsert({
+    where: { date_waveNo_category: { date: day, waveNo, category: MANUAL_SP } },
+    create: { date: day, waveNo, category: MANUAL_SP, count: safe, updatedByName: updatedByName ?? null },
+    update: { count: safe, updatedByName: updatedByName ?? null },
+  });
+}
+
+// ─────────────────────────────────────────────
+// 月次集計（Excel出力用）
+// ─────────────────────────────────────────────
+
+/** 1日分・1wave分の台数（貼付=完了台数 / SP=手動 / 増車=フォロー） */
+export interface MonthlyCell { haritsuke: number; sp: number; zosha: number }
+/** 月次集計: day("YYYY-MM-DD") → wave番号(1-6) → MonthlyCell */
+export interface MonthlyVehicleCounts {
+  month: string;               // "YYYY-MM"
+  days: string[];              // その月の "YYYY-MM-DD" 昇順
+  /** cells[day][waveNo] */
+  cells: Record<string, Record<number, MonthlyCell>>;
+}
+
+/** "YYYY-MM" のその月の日付("YYYY-MM-DD"昇順)を返す */
+function monthDays(month: string): string[] {
+  const [y, m] = month.split("-").map(Number);
+  const end = new Date(y!, m!, 1, 0, 0, 0, 0);
+  const days: string[] = [];
+  for (let d = new Date(y!, m! - 1, 1, 0, 0, 0, 0); d < end; d.setDate(d.getDate() + 1)) {
+    days.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  }
+  return days;
+}
+
+/** wave文字列 "W3" → 3 */
+function waveNoOf(wave: string): number {
+  const m = wave.match(/([1-6])/);
+  return m ? Number(m[1]) : 0;
+}
+
+/**
+ * 月次の台数確認表を集計する（Excel出力用）。
+ * 各日 getVehicleCountProgress をそのまま使うため、**画面の数値＝Excelの数値**が保証される
+ * （日付・SPの突合ロジックを日次と一元化＝タイムゾーンずれ等の二重管理を防ぐ）。
+ * 貼付=各waveを消化したドライバー数 / 増車=フォロー / SP=手動入力。
+ */
+export async function getMonthlyVehicleCounts(month: string): Promise<MonthlyVehicleCounts> {
+  const days = monthDays(month);
+  const cells: Record<string, Record<number, MonthlyCell>> = {};
+
+  // 順次実行（接続プール枯渇を避ける・エクスポートは即時性より確実性を優先）
+  for (const dk of days) {
+    const progress = await getVehicleCountProgress(dk);
+    cells[dk] = {};
+    for (const w of progress.waves) {
+      const no = waveNoOf(w.wave);
+      if (!no) continue;
+      cells[dk]![no] = { haritsuke: w.completed, sp: w.sp, zosha: w.follows };
+    }
+  }
+
+  return { month, days, cells };
 }

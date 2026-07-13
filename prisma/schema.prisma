@@ -537,3 +537,44 @@ model VehicleRoster {
   @@index([workDate])
   @@map("vehicle_rosters")
 }
+
+// 台数確認表の「手動入力値」（現状は SP のみ）。
+// 貼付=通常稼働・増車=フォロー は実績から自動集計するが、SP は判別データが無いため管理者が手入力する。
+// date × wave × category(=SP) で1件。Excel(③デポ美女木 台数確認表)の各セルに対応。
+// 既存モデルは非編集（衝突回避）。relation は張らず値のみ保持。
+model VehicleCountManual {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date                        // 対象日
+  waveNo        Int      @map("wave_no")                 // 1〜6（W1〜W6）
+  category      String                                   // "SP"（将来拡張余地）
+  count         Int      @default(0)                     // 台数
+  updatedByName String?  @map("updated_by_name")         // 最終更新者の表示名
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([date, waveNo, category], name: "date_waveNo_category")
+  @@index([date])
+  @@map("vehicle_count_manual")
+}
+
+// CARIO から pull した「稼働者の終了報告（wave完了）」。
+// 群LINE【楽天スーパー美女木】の終了報告は CARIO が保持 → 当アプリが pull（LINE直読みは方針で不可）。
+// 台数確認表の 貼付/増車 に driver×wave×date 単位で反映する（SP は手入力のまま）。
+// 同期は対象期間を全刷新（deleteMany→createMany）＝冪等。既存モデルは非編集（relation張らない）。
+model WaveCompletion {
+  id          String    @id @default(cuid())
+  date        DateTime  @db.Date                    // 稼働日
+  waveNo      Int       @map("wave_no")             // 1〜6
+  driverKey   String    @map("driver_key")          // 重複排除キー（当アプリdriverId or "cario:"+id or "name:"+氏名 or "agg:"+i）
+  driverId    String?   @map("driver_id")           // 突合できた当アプリ Driver.id（任意・relationは張らない）
+  driverName  String?   @map("driver_name")         // 表示用（PIIログはしない）
+  vehicleType String    @default("貼付") @map("vehicle_type") // 貼付|SP|増車
+  completedAt DateTime? @map("completed_at")         // 終了報告時刻
+  source      String    @default("CARIO")           // 取得元
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([date])
+  @@index([date, waveNo])
+  @@map("wave_completions")
+}
