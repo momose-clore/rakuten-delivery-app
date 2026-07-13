@@ -140,16 +140,22 @@ export interface LineImportResult {
 /**
  * LINEトーク履歴エクスポート(.txt本文)から帰庫を取り込む（過去日バックフィル）。
  * source="LINE" で保存し、含まれる日付ごとに全刷新（冪等）。CARIO API(当日/source=CARIO)とは分離。
+ * @param opts.from "YYYY-MM-DD" 指定時、その日より前の日付は取り込まない（例: 6月除外は from="2026-07-01"）
  */
-export async function importLineCompletions(text: string): Promise<LineImportResult> {
+export async function importLineCompletions(
+  text: string,
+  opts?: { from?: string }
+): Promise<LineImportResult> {
   const parsed = parseLineExport(text);
-  if (parsed.dates.length === 0) {
+  const from = opts?.from && /^\d{4}-\d{2}-\d{2}$/.test(opts.from) ? opts.from : null;
+  const kept = from ? parsed.completions.filter((c) => c.workDate >= from) : parsed.completions;
+  if (kept.length === 0) {
     return { dates: [], events: 0, inserted: 0 };
   }
 
   // 日付ごとにまとめる（driverKey は氏名ベース＝"name:氏名"。同一氏名×wave×日は1台に排除）
   const byDate = new Map<string, NormalizedCompletion[]>();
-  for (const c of parsed.completions) {
+  for (const c of kept) {
     if (!byDate.has(c.workDate)) byDate.set(c.workDate, []);
     byDate.get(c.workDate)!.push(c);
   }
@@ -165,5 +171,5 @@ export async function importLineCompletions(text: string): Promise<LineImportRes
     inserted += rows.length;
   }
 
-  return { dates: parsed.dates, events: parsed.events, inserted };
+  return { dates: [...byDate.keys()].sort(), events: kept.length, inserted };
 }
