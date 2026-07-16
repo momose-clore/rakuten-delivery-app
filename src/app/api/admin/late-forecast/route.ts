@@ -45,8 +45,46 @@ export async function GET(req: NextRequest) {
     byDriver.set(a.driverId, d);
   }
 
+  // ウェーブごとの終了報告（帰庫/業務終了）= wave_completions。CARIO/LINE由来の実績。
+  // driverId で紐付かない取込（LINE=氏名キー）にも対応するため氏名（空白除去）でも突合する。
+  const completions = await prisma.waveCompletion.findMany({
+    where: { date: { gte: targetDate, lt: nextDate } },
+    select: { waveNo: true, driverId: true, driverName: true },
+  });
+  const normName = (s: string) => s.replace(/[\s　]/g, "");
+  const wcById = new Map<string, Set<number>>();
+  const wcByName = new Map<string, Set<number>>();
+  for (const c of completions) {
+    if (c.driverId) {
+      if (!wcById.has(c.driverId)) wcById.set(c.driverId, new Set());
+      wcById.get(c.driverId)!.add(c.waveNo);
+    }
+    if (c.driverName) {
+      const k = normName(c.driverName);
+      if (!wcByName.has(k)) wcByName.set(k, new Set());
+      wcByName.get(k)!.add(c.waveNo);
+    }
+  }
+
   type Status = "late" | "atRisk" | "onTime" | "done" | "none";
   const drivers = shifts.map((s) => {
+    // ① ウェーブ終了報告があればそれを実績として反映（帰庫/業務終了＝完了）
+    const rep = wcById.get(s.driverId) ?? wcByName.get(normName(s.driver.name));
+    if (rep && rep.size > 0) {
+      const doneWaves = rep.size;
+      return {
+        driverId: s.driverId,
+        name: s.driver.name,
+        vehicleId: s.driver.vehicleId,
+        area: s.driver.area,
+        companyName: s.driver.companyName,
+        total: doneWaves,
+        completed: doneWaves,
+        remaining: 0,
+        status: "done" as Status,
+      };
+    }
+    // ② 報告が無ければ従来のアプリ内割当ベース
     const agg = byDriver.get(s.driverId);
     let status: Status = "none";
     if (agg) {
