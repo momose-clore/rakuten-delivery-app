@@ -10,6 +10,7 @@
 import { prisma } from "@/lib/prisma";
 import { getWaveCompletions, type NormalizedCompletion } from "./getCompletions";
 import { parseLineExport } from "./parseLineExport";
+import { fetchCarioWaveCompletions, fetchCarioDriverNames } from "./carioWaveDb";
 import { vehicleCountDayStart } from "@/lib/kpi/vehicle-count";
 
 export interface CompletionsSyncResult {
@@ -129,6 +130,69 @@ export async function syncCarioCompletions(date: string): Promise<CompletionsSyn
   ]);
 
   return { available: true, date, inserted: rows.length };
+}
+
+export interface CarioDbSyncResult {
+  available: boolean;
+  reason?: string;
+  from: string;
+  to: string;
+  dates: string[];
+  inserted: number;
+}
+
+/**
+ * CARIO の Supabase `wave_completions`（便ごとの完了・finished_at付き）を READ-ONLY で取得し、
+ * 当アプリの wave_completions へ反映する（対象期間の各日を全刷新＝冪等）。
+ * これが本命のリアルタイム経路（クルーがCARIOで便完了→即このテーブルに入る）。
+ * source="CARIO_DB"。取得不可時（未設定/HTTP失敗）はDBを触らない。
+ */
+export async function syncCarioWaveDb(from: string, to: string): Promise<CarioDbSyncResult> {
+  const pulled = await fetchCarioWaveCompletions(from, to);
+  if (!pulled.available) {
+    return { available: false, reason: pulled.reason, from, to, dates: [], inserted: 0 };
+  }
+
+  // CARIO driver_id → 当アプリ Driver.id / 表示名
+  const carioIds = [...new Set(pulled.rows.map((r) => r.driverId))];
+  const [ourDrivers, carioNames] = await Promise.all([
+    prisma.driver.findMany({ where: { carioDriverId: { in: carioIds } }, select: { id: true, name: true, carioDriverId: true } }),
+    fetchCarioDriverNames(),
+  ]);
+  const ourByCario = new Map<string, { id: string; name: string }>();
+  for (const d of ourDrivers) if (d.carioDriverId) ourByCario.set(d.carioDriverId, { id: d.id, name: d.name });
+
+  // 日付 → 行（driverKey×wave で重複排除）
+  const byDate = new Map<string, Map<string, CompletionRow>>();
+  for (const r of pulled.rows) {
+    const dateObj = vehicleCountDayStart(r.workDate);
+    const our = ourByCario.get(r.driverId);
+    const driverKey = our ? our.id : `cario:${r.driverId}`;
+    const driverName = our?.name ?? carioNames.get(r.driverId) ?? null;
+    const completedAt = r.finishedAt ? new Date(r.finishedAt) : null;
+    if (!byDate.has(r.workDate)) byDate.set(r.workDate, new Map());
+    const dm = byDate.get(r.workDate)!;
+    const uk = `${driverKey}|${r.waveNo}`;
+    if (dm.has(uk)) continue;
+    dm.set(uk, {
+      date: dateObj, waveNo: r.waveNo, driverKey,
+      driverId: our?.id ?? null, driverName, vehicleType: "貼付", completedAt, source: "CARIO_DB",
+    });
+  }
+
+  let inserted = 0;
+  for (const [date, dm] of byDate) {
+    const dateObj = vehicleCountDayStart(date);
+    const rows = [...dm.values()];
+    // 対象日は全ソース刷新（CARIO_DBを正とし、LINE等の重複を排除）
+    await prisma.$transaction([
+      prisma.waveCompletion.deleteMany({ where: { date: dateObj } }),
+      prisma.waveCompletion.createMany({ data: rows }),
+    ]);
+    inserted += rows.length;
+  }
+
+  return { available: true, from, to, dates: [...byDate.keys()].sort(), inserted };
 }
 
 export interface LineImportResult {
