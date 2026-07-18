@@ -30,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "ocr-kit"]
+  "exclude": ["node_modules", "外部開発OCR"]
 }

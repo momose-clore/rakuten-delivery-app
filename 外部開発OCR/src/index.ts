@@ -1,5 +1,5 @@
 /**
- * ocr-kit — 配送表OCR/取込エンジン（自己完結モジュール）
+ * 外部開発OCR — 配送表OCR/取込エンジン（自己完結モジュール）
  *
  * 楽天スーパー配送アプリの OCR/取込パイプラインを、DB(Prisma)・Next.js・NextAuth 依存なしで
  * 切り出したもの。「ファイル(PDF/画像/CSV/Excel/貼付テキスト) → 構造化行(NormalizedDispatchRow[])」
@@ -10,7 +10,7 @@
  *   - 本番相当では環境変数 OCR_SPACE_API_KEY 必須（未設定はデモキー fallback＝開発時のみ）
  *
  * 使い方:
- *   import { configure, parseDispatchFile } from "ocr-kit";
+ *   import { configure, parseDispatchFile } from "外部開発OCR";
  *   configure({ apiKey: process.env.OCR_SPACE_API_KEY });
  *   const { rows } = await parseDispatchFile({ buffer, filename: "haisha.pdf" });
  */

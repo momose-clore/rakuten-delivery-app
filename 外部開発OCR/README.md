@@ -1,4 +1,4 @@
-# ocr-kit
+# 外部開発OCR
 
 配送表の **OCR / 取込エンジン** を、DB(Prisma)・Next.js・NextAuth に依存せず切り出した自己完結モジュールです。
 「ファイル（PDF / 画像 / CSV / Excel / 貼付テキスト）→ 構造化行（`NormalizedDispatchRow[]`）」を提供します。
@@ -17,7 +17,7 @@
 ## インストール / ビルド
 
 ```bash
-cd ocr-kit
+cd 外部開発OCR
 npm install          # sharp / xlsx / pdf-parse 等
 npm run build        # dist/ に .js + .d.ts を出力
 # もしくは型チェックのみ:
@@ -32,7 +32,7 @@ npm run typecheck
 ### 1. まとめて取り込む（種別自動判定）
 
 ```ts
-import { configure, parseDispatchFile } from "ocr-kit";
+import { configure, parseDispatchFile } from "外部開発OCR";
 
 configure({ apiKey: process.env.OCR_SPACE_API_KEY }); // 環境変数を使うなら省略可
 
@@ -49,7 +49,7 @@ console.log(rows);      // NormalizedDispatchRow[]
 ### 2. 自動救済つきで取り込む
 
 ```ts
-import { parseDispatchFileWithRescue } from "ocr-kit";
+import { parseDispatchFileWithRescue } from "外部開発OCR";
 
 const { rows, rescuedRows } = await parseDispatchFileWithRescue({ buffer, filename });
 // rescuedRows: RescuedRow[]（autoRescued フラグ・予測値メタJSON付き）
@@ -67,7 +67,7 @@ import {
   parsePdfBuffer,          // PDF Buffer → { rows, source }
   applyL1MProfile,         // L1M配車表 OCR結果 → ImportBatchResult | null
   autoRescueRows,          // rows → RescuedRow[]（低信頼値の自動補正）
-} from "ocr-kit";
+} from "外部開発OCR";
 ```
 
 ## 修正履歴による安全補正（任意）

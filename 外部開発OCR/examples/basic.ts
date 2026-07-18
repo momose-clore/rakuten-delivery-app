@@ -1,5 +1,5 @@
 /**
- * ocr-kit 使い方サンプル
+ * 外部開発OCR 使い方サンプル
  *   実行: npx tsx examples/basic.ts <ファイルパス>
  *   画像/PDFのOCRを行う場合は OCR_SPACE_API_KEY を環境変数に設定してください。
  */

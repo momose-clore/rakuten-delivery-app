@@ -1,5 +1,5 @@
 {
-  "name": "ocr-kit",
+  "name": "外部開発OCR",
   "version": "0.1.0",
   "description": "配送表OCR/取込エンジン（OCR.space・自己完結モジュール）。ファイル(PDF/画像/CSV/Excel/貼付) → 構造化行。",
   "type": "commonjs",
