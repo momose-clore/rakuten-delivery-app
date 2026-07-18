@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
+import { isExternalRequestAuthorized } from "@/lib/external/auth";
 import {
   getVehicleCountProgress, saveManualCount, clearManualCount,
   MANUAL_CATEGORIES, MANUAL_SP, type ManualCategory,
@@ -28,8 +29,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await auth();
-  if (!session) return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
-  if (session.user.role !== "ADMIN") return NextResponse.json({ error: "権限がありません" }, { status: 403 });
+  const isAdmin = session?.user.role === "ADMIN";
+  const isToken = isExternalRequestAuthorized(req);
+  if (!isAdmin && !isToken) return NextResponse.json({ error: "認証が必要です" }, { status: 401 });
 
   let body: { date?: string; waveNo?: number; category?: string; count?: number; sp?: number; clear?: boolean };
   try {
@@ -62,6 +64,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "count は 0 以上の数値で指定してください" }, { status: 400 });
   }
 
-  await saveManualCount(date, waveNo, category, count, session.user.name ?? undefined);
+  await saveManualCount(date, waveNo, category, count, session?.user.name ?? undefined);
   return NextResponse.json(await getVehicleCountProgress(date));
 }
