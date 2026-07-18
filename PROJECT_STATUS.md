@@ -1,7 +1,18 @@
 # 楽天スーパー配送アプリ — 開発ステータス
 
 > GPT共有用ドキュメント。作業完了ごとに更新する。
-> 最終更新: 2026-07-12（台数確認表：終了報告で自動加算＋SP手入力＋Excel(.xlsx)ダウンロード）
+> 最終更新: 2026-07-18（CARIO Supabase直読みでリアルタイム便完了→遅配予想・台数自動反映）
+
+## 🆕🔴 CARIO Supabase 直読みでリアルタイム化（2026-07-18・本番稼働）
+- **判明**：クルーは楽天アプリ未使用。現行の便完了は CARIO `/api/wave/finish` → **CARIO Supabase `wave_completions`**（work_date=JST・**finished_at=完了時刻**付き）。旧 `/api/rakuten/wave`＋`rakuten_wave_records`/`rakuten_daily_reports` は **6/26で停止**（だから外部API GETは空だった）。
+- **連携（CARIOは読み取りのみ・不変更）**：`src/lib/cario/carioWaveDb.ts` が CARIO共有Supabaseを REST で READ-ONLY 取得（publishableキー=公開・env優先＋フォールバック `CARIO_SUPABASE_URL/ANON_KEY`）。財務サイトと同じDB共有方式。
+- **同期**：`syncCarioWaveDb(from,to)`（`completions-sync.ts`）が便完了を当アプリ `wave_completions` へ日付ごと全刷新（source=CARIO_DB・driver突合=carioDriverId、氏名補完）。台数確認表は**手動LINE取込不要**に。
+- **遅配予想**：`/api/admin/late-forecast` を完了時刻 vs 便締切(waves.ts)で判定に刷新（late/atRisk/onTime/done、想定6便）。ダッシュボードで「時間内に終わるか」が出る。
+- **経路**：`POST /api/admin/vehicle-count/sync-cario`（管理者 or トークン）／cron `cario-sync` が直近3日を同期（GitHub Actions 5分）→ ほぼリアルタイム。
+- **本番検証（2026-07-18）**：7/1〜7/18・376件同期。今日W1=4台・carioActive=true を確認。typecheck/lint/build ✅・deploy成功(`b830425`)。
+- 注意：`~/cario-app`（shou2690-ship-it/cario-app）がCARIO本体。本件はCARIO側 未変更。
+
+
 
 ---
 

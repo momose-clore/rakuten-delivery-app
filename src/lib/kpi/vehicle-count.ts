@@ -60,7 +60,7 @@ export function vehicleCountDayStart(date: string): Date {
 export async function getVehicleCountProgress(date: string, now: Date = new Date()): Promise<VehicleCountProgress> {
   const { day, next } = dayRange(date);
 
-  const [assignments, follows, manual, completions] = await Promise.all([
+  const [assignments, follows, manual, completions, extras] = await Promise.all([
     prisma.assignment.findMany({
       where: { deliveryItem: { dispatchImage: { deliveryDate: { gte: day, lt: next } } } },
       select: { driverId: true, waveNo: true, deliveryItem: { select: { waveNo: true, deliveryStatus: true } } },
@@ -78,7 +78,20 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
       where: { date: day },
       select: { waveNo: true, driverKey: true, vehicleType: true },
     }),
+    // 増車＝増便申請（承認済・美女木デポ）。requestDate は @db.Date のため範囲で当日一致。
+    prisma.extraVehicleRequest.findMany({
+      where: { requestDate: { gte: day, lt: next }, status: "approved", depot: { contains: "美女木" } },
+      select: { waveNo: true, vehicleCount: true },
+    }),
   ]);
+
+  // 増車（増便申請・便別合計台数）
+  const extraByWave = new Map<number, number>();
+  for (const e of extras) {
+    const no = parseWaveNo(e.waveNo);
+    if (!no) continue;
+    extraByWave.set(no, (extraByWave.get(no) ?? 0) + (e.vehicleCount ?? 0));
+  }
 
   // wave番号(1-6) → driverId → {total, terminal}（予定台数＝割当ドライバー数）
   const byWave = new Map<number, Map<string, { total: number; terminal: number }>>();
@@ -129,7 +142,8 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
   const waves: WaveCrewRow[] = WAVE_WINDOWS.map((w) => {
     const planned = byWave.get(w.no)!.size;
     const autoHaritsuke = haritsukeByWave.get(w.no)!.size;
-    const autoZosha = followByWave.get(w.no)!.size;
+    // 増車 = 増便申請(承認済) ＋ フォロー/CARIO増車
+    const autoZosha = followByWave.get(w.no)!.size + (extraByWave.get(w.no) ?? 0);
     const hOv = haritsukeOverride.get(w.no);
     const zOv = zoshaOverride.get(w.no);
     return {
