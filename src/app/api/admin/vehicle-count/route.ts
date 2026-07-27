@@ -24,7 +24,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "日付形式が不正です（YYYY-MM-DD）" }, { status: 400 });
   }
 
-  return NextResponse.json(await getVehicleCountProgress(date));
+  try {
+    return NextResponse.json(await getVehicleCountProgress(date));
+  } catch (err) {
+    // 管理者専用ルートのため、原因特定のためにメッセージを返す（PIIは含めない）。
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: `集計に失敗しました: ${message}` }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest) {

@@ -37,6 +37,8 @@ export interface VehicleCountProgress {
   totals: { planned: number; completed: number; sp: number; follows: number };
   /** CARIO の終了報告がこの日に取り込まれているか（貼付/増車に反映済み） */
   carioActive: boolean;
+  /** 集計中に一部クエリが失敗した場合の理由（表は残りのデータで表示する） */
+  warnings?: string[];
 }
 
 /** 対象日 00:00〜翌日 00:00 の範囲を返す */
@@ -60,29 +62,40 @@ export function vehicleCountDayStart(date: string): Date {
 export async function getVehicleCountProgress(date: string, now: Date = new Date()): Promise<VehicleCountProgress> {
   const { day, next } = dayRange(date);
 
+  // 1クエリが失敗しても表全体が落ちないよう、各クエリを個別に握って理由を残す。
+  const warnings: string[] = [];
+  const safe = async <T>(label: string, p: Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await p;
+    } catch (e) {
+      warnings.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+      return fallback;
+    }
+  };
+
   const [assignments, follows, manual, completions, extras] = await Promise.all([
-    prisma.assignment.findMany({
+    safe("assignments", prisma.assignment.findMany({
       where: { deliveryItem: { dispatchImage: { deliveryDate: { gte: day, lt: next } } } },
       select: { driverId: true, waveNo: true, deliveryItem: { select: { waveNo: true, deliveryStatus: true } } },
-    }),
-    prisma.deliveryFollow.findMany({
+    }), [] as { driverId: string; waveNo: string | null; deliveryItem: { waveNo: string | null; deliveryStatus: string } }[]),
+    safe("follows", prisma.deliveryFollow.findMany({
       where: { deliveryItem: { dispatchImage: { deliveryDate: { gte: day, lt: next } } } },
       select: { driverId: true, deliveryItem: { select: { waveNo: true } } },
-    }),
-    prisma.vehicleCountManual.findMany({
+    }), [] as { driverId: string; deliveryItem: { waveNo: string | null } }[]),
+    safe("manual", prisma.vehicleCountManual.findMany({
       where: { date: day },
       select: { waveNo: true, category: true, count: true },
-    }),
+    }), [] as { waveNo: number; category: string; count: number }[]),
     // CARIO からpullした終了報告（未同期なら空＝既存動作を維持）
-    prisma.waveCompletion.findMany({
+    safe("completions", prisma.waveCompletion.findMany({
       where: { date: day },
       select: { waveNo: true, driverKey: true, vehicleType: true },
-    }),
+    }), [] as { waveNo: number; driverKey: string; vehicleType: string }[]),
     // 増車＝増便申請（承認済・美女木デポ）。requestDate は @db.Date のため範囲で当日一致。
-    prisma.extraVehicleRequest.findMany({
+    safe("extras", prisma.extraVehicleRequest.findMany({
       where: { requestDate: { gte: day, lt: next }, status: "approved", depot: { contains: "美女木" } },
       select: { waveNo: true, vehicleCount: true },
-    }),
+    }), [] as { waveNo: string; vehicleCount: number }[]),
   ]);
 
   // 増車（増便申請・便別合計台数）
@@ -161,7 +174,7 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
     { planned: 0, completed: 0, sp: 0, follows: 0 }
   );
 
-  return { date, now: now.toISOString(), waves, totals, carioActive };
+  return { date, now: now.toISOString(), waves, totals, carioActive, warnings: warnings.length ? warnings : undefined };
 }
 
 /**

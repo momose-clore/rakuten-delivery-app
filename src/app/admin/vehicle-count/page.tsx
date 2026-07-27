@@ -11,6 +11,7 @@ interface Progress {
   waves: WaveRow[];
   totals: { planned: number; completed: number; sp: number; follows: number };
   carioActive: boolean;
+  warnings?: string[];
 }
 
 interface MonthlyCell { haritsuke: number; sp: number; zosha: number; ov?: { haritsuke: boolean; zosha: boolean } }
@@ -250,6 +251,12 @@ export default function VehicleCountPage() {
       </div>
 
       {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-md">{error}</p>}
+      {data?.warnings && data.warnings.length > 0 && (
+        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 px-3 py-2 rounded-md space-y-0.5">
+          <p className="font-semibold">⚠ 一部の集計に失敗しました（表は取得できた範囲で表示）</p>
+          {data.warnings.map((w, i) => <p key={i} className="break-all">・{w}</p>)}
+        </div>
+      )}
 
       {data && (
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
