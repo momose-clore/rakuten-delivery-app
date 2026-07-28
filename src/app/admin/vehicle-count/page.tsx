@@ -138,6 +138,31 @@ export default function VehicleCountPage() {
     finally { setSyncing(false); }
   }, [date, month, loadMonthly]);
 
+  /** 今月分（viewMonth）を一気にCARIO取込（from/to で期間同期） */
+  const syncCarioMonth = useCallback(async () => {
+    setSyncing(true); setSyncMsg("");
+    try {
+      const [y, m] = month.split("-").map(Number);
+      const from = `${month}-01`;
+      const last = new Date(y!, m!, 0).getDate();
+      const to = `${month}-${String(last).padStart(2, "0")}`;
+      const res = await fetch("/api/admin/vehicle-count/sync-cario", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setSyncMsg(body.error ?? "取込に失敗しました"); return; }
+      if (body.sync?.available) {
+        setSyncMsg(`CARIO一括取込完了（${month}）：${body.sync.dates?.length ?? 0}日分・${body.sync.inserted ?? 0}件を反映`);
+      } else {
+        setSyncMsg("CARIO側の終了報告が取得できませんでした（未提供/未設定）");
+      }
+      load(date); loadMonthly(month);
+    } catch { setSyncMsg("取込に失敗しました"); }
+    finally { setSyncing(false); }
+  }, [month, date, load, loadMonthly]);
+
   const importLine = useCallback(async (file: File) => {
     setImporting(true); setImportMsg("");
     try {
@@ -211,6 +236,13 @@ export default function VehicleCountPage() {
             className="inline-flex items-center gap-2 rounded-md border border-blue-600 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-60"
           >
             <span aria-hidden>↻</span> {syncing ? "取込中…" : "CARIO終了報告を取込（当日）"}
+          </button>
+          <button
+            onClick={syncCarioMonth}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            <span aria-hidden>⇊</span> {syncing ? "取込中…" : `今月分を一括取込（${month}）`}
           </button>
           <label className={`inline-flex items-center gap-2 rounded-md border border-blue-600 px-4 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 cursor-pointer ${importing ? "opacity-60 pointer-events-none" : ""}`}>
             <span aria-hidden>⬆</span> {importing ? "取込中…" : "LINE報告を取込（過去日）"}

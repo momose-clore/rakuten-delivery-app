@@ -184,9 +184,11 @@ export async function syncCarioWaveDb(from: string, to: string): Promise<CarioDb
   for (const [date, dm] of byDate) {
     const dateObj = vehicleCountDayStart(date);
     const rows = [...dm.values()];
-    // 対象日は全ソース刷新（CARIO_DBを正とし、LINE等の重複を排除）
+    // 対象日は CARIO_DB ソース分のみ刷新する。
+    // ※ 以前は全ソース削除していたが、LINE取込・手入力の反映まで消えてしまうため source を限定。
+    //   二重計上は集計側(getVehicleCountProgress)で「CARIO_DBがあれば優先」して回避する。
     await prisma.$transaction([
-      prisma.waveCompletion.deleteMany({ where: { date: dateObj } }),
+      prisma.waveCompletion.deleteMany({ where: { date: dateObj, source: "CARIO_DB" } }),
       prisma.waveCompletion.createMany({ data: rows }),
     ]);
     inserted += rows.length;

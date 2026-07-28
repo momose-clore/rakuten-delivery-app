@@ -89,8 +89,8 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
     // CARIO からpullした終了報告（未同期なら空＝既存動作を維持）
     safe("completions", prisma.waveCompletion.findMany({
       where: { date: day },
-      select: { waveNo: true, driverKey: true, vehicleType: true },
-    }), [] as { waveNo: number; driverKey: string; vehicleType: string }[]),
+      select: { waveNo: true, driverKey: true, vehicleType: true, source: true },
+    }), [] as { waveNo: number; driverKey: string; vehicleType: string; source: string }[]),
     // 増車＝増便申請（承認済・美女木デポ）。requestDate は @db.Date のため範囲で当日一致。
     safe("extras", prisma.extraVehicleRequest.findMany({
       where: { requestDate: { gte: day, lt: next }, status: "approved", depot: { contains: "美女木" } },
@@ -143,8 +143,12 @@ export async function getVehicleCountProgress(date: string, now: Date = new Date
     followByWave.get(no)!.add(f.driverId);
   }
   // CARIO 終了報告をマージ（貼付/増車。SPは手入力を正とするため取り込まない）
+  // 同一日に CARIO_DB(ライブ) と LINE(バックフィル) が混在する場合は CARIO_DB を優先し二重計上を防ぐ
+  // （どちらのソースも削除はせず保持する＝反映は残る）。
+  const hasCarioDb = completions.some((c) => c.source === "CARIO_DB");
+  const effectiveCompletions = hasCarioDb ? completions.filter((c) => c.source === "CARIO_DB") : completions;
   let carioActive = false;
-  for (const c of completions) {
+  for (const c of effectiveCompletions) {
     if (!haritsukeByWave.has(c.waveNo)) continue;
     carioActive = true;
     if (c.vehicleType === "増車") followByWave.get(c.waveNo)!.add(c.driverKey);
