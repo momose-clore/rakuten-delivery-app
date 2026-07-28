@@ -476,8 +476,61 @@ export default function VehicleCountPage() {
               type="month" value={viewMonth} onChange={(e) => e.target.value && setViewMonth(e.target.value)}
               className="px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700"
             />
+            <button
+              onClick={runReconcile}
+              disabled={reconciling}
+              className="inline-flex items-center gap-1.5 rounded-md border border-purple-600 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-50 disabled:opacity-60"
+            >
+              <span aria-hidden>⇄</span> {reconciling ? "照合中…" : "CARIOと差異チェック"}
+            </button>
             <span className="text-xs text-gray-500">各セルを直接編集できます（貼付/SP/増車）。自動集計を手入力で上書きすると<span className="bg-amber-50 border border-amber-300 px-1 rounded">黄色</span>表示。横スクロール可。</span>
           </div>
+
+          {/* CARIO 楽天美女木 との差異チェック結果（貼付＝完了台数を日×便で突合） */}
+          {reconcile && reconcile.month === month && (
+            reconcile.available ? (
+              reconcile.summary.matched ? (
+                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  ✓ CARIO楽天美女木と一致（{monthLabel(month)}）：差異なし。合計 {reconcile.summary.appTotal}台（CARIO {reconcile.summary.carioTotal}台）
+                </div>
+              ) : (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 space-y-2">
+                  <p className="text-sm font-bold text-red-700">
+                    ⚠ CARIOと差異あり：{reconcile.summary.diffCells}件（アプリ合計 {reconcile.summary.appTotal}台 / CARIO {reconcile.summary.carioTotal}台）
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="text-xs border-collapse bg-white rounded">
+                      <thead>
+                        <tr className="bg-gray-50 text-gray-600">
+                          <th className="px-3 py-1.5 text-left font-medium border-b border-gray-200">日付</th>
+                          <th className="px-3 py-1.5 text-left font-medium border-b border-gray-200">便</th>
+                          <th className="px-3 py-1.5 text-right font-medium border-b border-gray-200">アプリ(貼付)</th>
+                          <th className="px-3 py-1.5 text-right font-medium border-b border-gray-200">CARIO</th>
+                          <th className="px-3 py-1.5 text-right font-medium border-b border-gray-200">差</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {reconcile.diffs.map((d) => (
+                          <tr key={`${d.date}-${d.waveNo}`} className="border-b border-gray-100">
+                            <td className="px-3 py-1 text-gray-800">{d.date}（{weekdayJa(d.date)}）</td>
+                            <td className="px-3 py-1 text-gray-800">W{d.waveNo}</td>
+                            <td className="px-3 py-1 text-right text-gray-800">{d.app}</td>
+                            <td className="px-3 py-1 text-right text-gray-800">{d.cario}</td>
+                            <td className={`px-3 py-1 text-right font-bold ${d.diff > 0 ? "text-blue-700" : "text-red-700"}`}>{d.diff > 0 ? `+${d.diff}` : d.diff}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-[11px] text-red-600/80">差＝アプリ−CARIO。＋はアプリ過多（手入力上書き等）／−はアプリ不足（未取込等）。「今月分を一括取込」で最新化 or 月次グリッドのセルを修正してください。</p>
+                </div>
+              )
+            ) : (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                CARIOと照合できませんでした（{reconcile.reason ?? "unavailable"}）
+              </div>
+            )
+          )}
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
             <table className="text-xs border-collapse">
               <thead>
