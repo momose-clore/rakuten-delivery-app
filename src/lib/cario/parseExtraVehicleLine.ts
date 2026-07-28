@@ -18,18 +18,37 @@ function toHalf(s: string): string {
     .replace(/[〜～]/g, "~");
 }
 
-/** "6W" / "4W 6W" / "4~6W" / "4w.6w" → wave番号(1-6)の集合 */
+/**
+ * "6W" / "4W 6W" / "4~6W" / "4w.6w" → wave番号(1-6)の集合。
+ * ※「N号車」「N～M号車」は号車番号なので wave として拾わない（除去してから解析）。
+ */
 function parseWaves(raw: string): number[] {
-  const s = toHalf(raw);
+  // 号車表記を除去（"1～5号車" / "14号車" 等）
+  const s = toHalf(raw).replace(/\d+\s*~\s*\d+\s*号車/g, " ").replace(/\d+\s*号車/g, " ");
   const waves = new Set<number>();
-  // 範囲 "4~6"
-  for (const m of s.matchAll(/([1-6])\s*~\s*([1-6])/g)) {
+  // 範囲 "4~6W" / "W4~W6"
+  for (const m of s.matchAll(/[wW]?\s*([1-6])\s*~\s*[wW]?\s*([1-6])\s*[wW]?/g)) {
+    // 少なくとも一方に W が付く範囲のみ便とみなす（"1~5号車"は上で除去済）
+    if (!/[wW]/.test(m[0])) continue;
     const a = Number(m[1]), b = Number(m[2]);
     for (let w = Math.min(a, b); w <= Math.max(a, b); w++) waves.add(w);
   }
-  // 個別 "6w" / "6W" / "6" が w/便 の近くにあるもの
+  // 個別 "6W"(数字→W) / "W6"(W→数字) 両対応
   for (const m of s.matchAll(/([1-6])\s*[wW]/g)) waves.add(Number(m[1]));
+  for (const m of s.matchAll(/[wW]\s*([1-6])/g)) waves.add(Number(m[1]));
   return [...waves].sort();
+}
+
+/** "W5 8台" / "6w 1台" のような「便＋台数」を取り出す（フォーム型の台数行用） */
+function parseWaveCount(raw: string): { waveNo: number; count: number } | null {
+  const s = toHalf(raw).replace(/\d+\s*号車/g, " ");
+  // "W5 8台"（W→数字）
+  let m = s.match(/[wW]\s*([1-6])\D*?(\d+)\s*台/);
+  if (m) return { waveNo: Number(m[1]), count: Number(m[2]) };
+  // "6w 1台"（数字→W）
+  m = s.match(/([1-6])\s*[wW]\D*?(\d+)\s*台/);
+  if (m) return { waveNo: Number(m[1]), count: Number(m[2]) };
+  return null;
 }
 
 export interface ExtraVehicleItem {
@@ -57,14 +76,20 @@ export function parseExtraVehicleLine(text: string): ParsedExtraVehicle {
   // 美女木ブロック処理中の状態
   let inBijogi = false;
   let blockDate: string | null = null;
-  let formWaves: number[] = [];   // フォーム型の「該当便」蓄積
+  let formWaves: number[] = [];              // フォーム型の「該当便」蓄積
+  let explicitCounts: Map<number, number> = new Map(); // "W5 8台" 明示
   let expectForm: "" | "wave" | "count" = "";
 
   const pushForm = () => {
-    if (inBijogi && formWaves.length) {
-      for (const w of formWaves) items.push({ date: blockDate!, waveNo: w, count: 1, note: "form" });
+    if (inBijogi) {
+      if (explicitCounts.size > 0) {
+        for (const [w, c] of explicitCounts) items.push({ date: blockDate!, waveNo: w, count: c, note: "form" });
+      } else {
+        for (const w of formWaves) items.push({ date: blockDate!, waveNo: w, count: 1, note: "form" });
+      }
     }
     formWaves = [];
+    explicitCounts = new Map();
     expectForm = "";
   };
 
@@ -109,9 +134,14 @@ export function parseExtraVehicleLine(text: string): ParsedExtraVehicle {
       continue;
     }
 
-    // フォーム型: 「該当便」→ 便、「台数」→ N台
+    // フォーム型: 「該当便」→ 便、「台数」→ N台（"W5 8台" は明示カウント）
     if (/該当便/.test(line)) { expectForm = "wave"; continue; }
     if (/台数/.test(line)) { expectForm = "count"; continue; }
+    if (expectForm === "count") {
+      const wc = parseWaveCount(line);
+      if (wc) explicitCounts.set(wc.waveNo, (explicitCounts.get(wc.waveNo) ?? 0) + wc.count);
+      continue;
+    }
     if (expectForm === "wave") {
       const ws = parseWaves(line);
       if (ws.length) formWaves.push(...ws);
@@ -121,12 +151,16 @@ export function parseExtraVehicleLine(text: string): ParsedExtraVehicle {
   }
   pushForm();
 
+  // 同一日に「サマリ型(・氏名)」があれば、その日の「フォーム型」は二重計上防止のため無視する
+  const datesWithSummary = new Set(items.filter((i) => i.note !== "form").map((i) => i.date));
+  const kept = items.filter((i) => i.note !== "form" || !datesWithSummary.has(i.date));
+
   // 便別に集約
   const byCell: Record<string, number> = {};
-  for (const it of items) {
+  for (const it of kept) {
     const k = `${it.date}|${it.waveNo}`;
     byCell[k] = (byCell[k] ?? 0) + it.count;
   }
-  const dates = [...new Set(items.map((i) => i.date))].sort();
-  return { items, byCell, dates };
+  const dates = [...new Set(kept.map((i) => i.date))].sort();
+  return { items: kept, byCell, dates };
 }

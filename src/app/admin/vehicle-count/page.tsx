@@ -23,6 +23,14 @@ interface Monthly {
   cells: Record<string, Record<number, MonthlyCell>>;
 }
 
+interface ReconcileResult {
+  month: string;
+  available: boolean;
+  reason?: string;
+  summary: { appTotal: number; carioTotal: number; diffCells: number; matched: boolean };
+  diffs: { date: string; waveNo: number; app: number; cario: number; diff: number }[];
+}
+
 const WAVES = [1, 2, 3, 4, 5, 6];
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -61,6 +69,9 @@ export default function VehicleCountPage() {
   // 月次グリッドのセル編集（キー: date|wave|field）
   const [cellDraft, setCellDraft] = useState<Record<string, string>>({});
   const [savingCell, setSavingCell] = useState<string | null>(null);
+  // CARIO楽天美女木との差異チェック（表示月・台数）
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcile, setReconcile] = useState<ReconcileResult | null>(null);
   const inFlight = useRef(false);
 
   const month = viewMonth;
@@ -166,6 +177,19 @@ export default function VehicleCountPage() {
     } catch { setSyncMsg("取込に失敗しました"); }
     finally { setSyncing(false); }
   }, [month, date, load, loadMonthly]);
+
+  /** CARIO 楽天美女木の便完了台数と、表示月の台数確認表を突合（差異チェック） */
+  const runReconcile = useCallback(async () => {
+    setReconciling(true); setReconcile(null);
+    try {
+      const res = await fetch(`/api/admin/vehicle-count/reconcile?month=${month}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setReconcile({ month, available: false, reason: body.error ?? "取得に失敗しました", summary: { appTotal: 0, carioTotal: 0, diffCells: 0, matched: false }, diffs: [] }); return; }
+      setReconcile(body as ReconcileResult);
+    } catch {
+      setReconcile({ month, available: false, reason: "取得に失敗しました", summary: { appTotal: 0, carioTotal: 0, diffCells: 0, matched: false }, diffs: [] });
+    } finally { setReconciling(false); }
+  }, [month]);
 
   const importLine = useCallback(async (file: File) => {
     setImporting(true); setImportMsg("");
