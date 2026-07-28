@@ -52,6 +52,10 @@ export default function VehicleCountPage() {
   const [syncMsg, setSyncMsg] = useState("");
   const [importing, setImporting] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+  // 増車申請LINE取込（美女木のみ・プレビュー確認式）
+  const [extraPreview, setExtraPreview] = useState<{ text: string; cells: { date: string; waveNo: number; count: number }[] } | null>(null);
+  const [extraBusy, setExtraBusy] = useState(false);
+  const [extraMsg, setExtraMsg] = useState("");
   // 月次一覧・Excelの「表示月」。日次(date)とは独立してボタンで切替。
   const [viewMonth, setViewMonth] = useState(today.slice(0, 7)); // "YYYY-MM"
   // 月次グリッドのセル編集（キー: date|wave|field）
@@ -180,6 +184,40 @@ export default function VehicleCountPage() {
     finally { setImporting(false); }
   }, [date, month, load, loadMonthly]);
 
+  /** 増車申請LINE → 美女木のみ抽出してプレビュー */
+  const previewExtra = useCallback(async (file: File) => {
+    setExtraBusy(true); setExtraMsg(""); setExtraPreview(null);
+    try {
+      const text = await file.text();
+      const res = await fetch("/api/admin/vehicle-count/import-extra-line", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, dryRun: true }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setExtraMsg(body.error ?? "解析に失敗しました"); return; }
+      setExtraPreview({ text, cells: body.cells ?? [] });
+    } catch { setExtraMsg("解析に失敗しました"); }
+    finally { setExtraBusy(false); }
+  }, []);
+
+  /** プレビュー内容を増車として反映 */
+  const applyExtra = useCallback(async () => {
+    if (!extraPreview) return;
+    setExtraBusy(true); setExtraMsg("");
+    try {
+      const res = await fetch("/api/admin/vehicle-count/import-extra-line", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: extraPreview.text, dryRun: false }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { setExtraMsg(body.error ?? "反映に失敗しました"); return; }
+      setExtraMsg(`増車を反映しました：${body.cells?.length ?? 0}件`);
+      setExtraPreview(null);
+      load(date); loadMonthly(month);
+    } catch { setExtraMsg("反映に失敗しました"); }
+    finally { setExtraBusy(false); }
+  }, [extraPreview, date, month, load, loadMonthly]);
+
   /** 月次グリッドのセル保存（date×wave×field） */
   const saveCell = useCallback(async (dk: string, no: number, field: CatField, raw: string, current: number) => {
     const key = `${dk}|${no}|${field}`;
@@ -251,6 +289,13 @@ export default function VehicleCountPage() {
               onChange={(e) => { const f = e.target.files?.[0]; if (f) importLine(f); e.target.value = ""; }}
             />
           </label>
+          <label className={`inline-flex items-center gap-2 rounded-md border border-amber-500 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 cursor-pointer ${extraBusy ? "opacity-60 pointer-events-none" : ""}`}>
+            <span aria-hidden>⬆</span> {extraBusy ? "処理中…" : "増車申請LINEを取込（美女木）"}
+            <input
+              type="file" accept=".txt,text/plain" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) previewExtra(f); e.target.value = ""; }}
+            />
+          </label>
           <a
             href={`/api/admin/vehicle-count/export?month=${month}`}
             className="inline-flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
@@ -262,6 +307,31 @@ export default function VehicleCountPage() {
 
       {syncMsg && <p className="text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-md">{syncMsg}</p>}
       {importMsg && <p className="text-sm text-blue-700 bg-blue-50 px-3 py-2 rounded-md">{importMsg}</p>}
+      {extraMsg && <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded-md">{extraMsg}</p>}
+
+      {/* 増車申請LINE 取込プレビュー（確認してから反映） */}
+      {extraPreview && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50/50 p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-amber-900">増車申請LINE 取込プレビュー（美女木・{extraPreview.cells.length}件）</h3>
+            <div className="flex gap-2">
+              <button onClick={() => setExtraPreview(null)} className="px-3 py-1.5 text-xs rounded border border-gray-300 text-gray-600 hover:bg-white">やめる</button>
+              <button onClick={applyExtra} disabled={extraBusy || extraPreview.cells.length === 0}
+                className="px-3 py-1.5 text-xs rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60">
+                {extraBusy ? "反映中…" : "この内容で増車に反映"}
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">手書き申請のため誤りがあれば、反映後に月次グリッドのセルで直接修正できます。日付/便が違う行は反映後に手修正してください。</p>
+          <div className="flex flex-wrap gap-1.5">
+            {extraPreview.cells.map((c) => (
+              <span key={`${c.date}|${c.waveNo}`} className="inline-flex items-center gap-1 rounded bg-white border border-amber-300 px-2 py-1 text-xs text-gray-800">
+                {c.date.slice(5)} <b>W{c.waveNo}</b> = {c.count}台
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 flex flex-wrap items-center gap-4">
         <div>
