@@ -73,6 +73,7 @@ export default function VehicleCountPage() {
   const [reconciling, setReconciling] = useState(false);
   const [reconcile, setReconcile] = useState<ReconcileResult | null>(null);
   const inFlight = useRef(false);
+  const monthlySeq = useRef(0); // 月次取得の順序ガード（古い応答で新しい保存を上書きしない）
 
   const month = viewMonth;
 
@@ -100,9 +101,14 @@ export default function VehicleCountPage() {
   }, []);
 
   const loadMonthly = useCallback(async (mo: string) => {
+    const seq = ++monthlySeq.current;
     try {
       const res = await fetch(`/api/admin/vehicle-count/monthly?month=${mo}`);
-      if (res.ok) setMonthly(await res.json());
+      if (!res.ok) return;
+      const data = await res.json();
+      // 保存直後の楽観更新を古い応答で上書きしないよう、最新リクエストのみ反映
+      if (seq !== monthlySeq.current) return;
+      setMonthly(data);
     } catch { /* 月次はベストエフォート */ }
   }, []);
 
@@ -255,8 +261,20 @@ export default function VehicleCountPage() {
         body: JSON.stringify({ date: dk, waveNo: no, category: CAT_LABEL[field], count: val }),
       });
       if (!res.ok) { setError((await res.json().catch(() => ({}))).error ?? "保存に失敗しました"); return; }
+      // 楽観更新：保存値を即座に月次グリッドへ反映（古い自動更新に負けないよう先に確定）
+      setMonthly((prev) => {
+        if (!prev) return prev;
+        const cells = { ...prev.cells };
+        const day = { ...(cells[dk] ?? {}) };
+        const cell = { ...(day[no] ?? { haritsuke: 0, sp: 0, zosha: 0, ov: { haritsuke: false, zosha: false } }) };
+        cell[field] = val;
+        if (field === "haritsuke") cell.ov = { ...(cell.ov ?? { haritsuke: false, zosha: false }), haritsuke: true };
+        if (field === "zosha") cell.ov = { ...(cell.ov ?? { haritsuke: false, zosha: false }), zosha: true };
+        day[no] = cell; cells[dk] = day;
+        return { ...prev, cells };
+      });
       setCellDraft((p) => { const n = { ...p }; delete n[key]; return n; });
-      await loadMonthly(viewMonth);
+      loadMonthly(viewMonth);
       if (dk === date) load(date);
     } catch { setError("保存に失敗しました"); }
     finally { setSavingCell(null); }
