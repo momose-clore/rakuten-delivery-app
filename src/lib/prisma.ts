@@ -15,6 +15,9 @@ function ensureSsl(url: string): string {
 function createPrismaClient() {
   const adapter = new PrismaPg({
     connectionString: ensureSsl(process.env.DATABASE_URL!),
+    // サーバーレス多重起動でも pooler を枯渇させないよう、1インスタンスの接続数を抑える。
+    // 実行時は Transaction pooler(6543) 前提（接続は都度返却されるため少数で十分）。
+    max: 3,
   });
   return new PrismaClient({ adapter });
 }

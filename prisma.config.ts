@@ -12,6 +12,8 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // マイグレーションは Session pooler / 直結（DIRECT_URL）を優先する。
+    // 実行時(DATABASE_URL)は Transaction pooler(6543) を使う想定で、そちらは DDL/advisory lock 非対応のため。
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });
